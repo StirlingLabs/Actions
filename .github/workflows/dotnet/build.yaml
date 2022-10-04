@@ -1,0 +1,118 @@
+name: .Net Build
+
+on:
+  workflow_call:
+    inputs:
+      solution:
+        description: Solution file name
+        type: string
+        required: false
+      project:
+        description: Project name
+        type: string
+        required: false
+
+jobs:
+  name:
+    name: Determine Name
+    uses: ./.github/workflows/name.yaml
+    with:
+      coreName: ${{ inputs.project }}
+
+  build:
+    name: .Net Build
+    runs-on: [ ubuntu-22.04, macos-11, windows-2022 ]
+    needs: name
+    defaults:
+      run:
+        shell: bash
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - name: Find Solution
+        id: solution
+        run: |
+          if [ "$solution" == "" ] ; then
+            solutions=$(find . -name '*.sln')
+            count=0
+            for sln in "${solutions[@]}" ; do
+              count=$((count+1))
+              echo $count. $sln
+              if [ count -eq 1 ] ; then
+                solution=$sln
+              fi
+            done
+            if [ $count -gt 1 ] ; then
+              echo Too many solutions ($count)!
+              exit 1
+            fi
+          fi
+          echo "::set-output name=sln::$solution"
+        env:
+          solution: ${{ inputs.solution }}
+
+      - name: Install .Net 6
+        id: dotnet6
+        run: |
+          case "${RUNNER_OS}" in
+            Linux)    sudo apt install dotnet6 ;;
+            macOS)    dotnet --list-sdks  ;;
+            Windows)  dotnet --list-sdks ;;
+            *)        echo "Do not recognise ${RUNNER_OS}." && exit 1 ;;
+          esac
+
+      - name: NuGet Auth
+        uses: StirlingLabs/GithubNugetAuthAction@main
+
+      - name: Build
+        run: dotnet build ${{ steps.solution.outputs.sln }} -c Release
+
+      - name: Test
+        run: dotnet test ${{ steps.solution.outputs.sln }} --no-build -c Release -l:GitHubActions
+
+      - name: Upload Artifacts
+        if: runner.os == Linux
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ needs.name.outputs.project }}
+          path: |
+            artifacts/*.nupkg
+          if-no-files-found: error
+
+      - name: Save coverage to storage branch
+        if: runner.os == Linux
+        uses: StirlingLabs/BranchStorageAction@v21.07.3
+        with:
+          comment: |
+            Coverage for ${{github.ref}}
+            Action: https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}
+            Commit: https://github.com/${{github.repository}}/commit/${{github.sha}}
+          storage-branch: coverage
+          src: coverage
+          dst: coverage
+          prune: true
+
+      - name: Clean
+        run: |
+          dotnet clean ${{ steps.solution.outputs.sln }}
+          rm -rf **/{bin,obj}/**
+
+      - name: Test NuPkgs
+        run: |
+          if [ -d "$testProject" ]; then
+            dotnet restore "$testProject" -p:Configuration=Release -p:UseBuiltNuPkg=True
+            dotnet build "$testProject" -c Release --no-restore -p:UseBuiltNuPkg=True
+            dotnet test "$testProject" -c Release --no-restore --no-build -l:GitHubActions -p:UseBuiltNuPkg=True
+          else
+            echo Tests not found at $testProject
+            ls *.Tests
+            exit 1
+          fi
+        env:
+          testProject: ${{ needs.name.outputs.project }}.Tests
