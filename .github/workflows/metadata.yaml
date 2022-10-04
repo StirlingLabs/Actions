@@ -1,0 +1,154 @@
+name: Metadata
+
+on:
+  workflow_call:
+    inputs:
+      coreName:
+        description: The core (most minimal) name of the project
+        type: string
+        required: false
+      strictVersion:
+        description: Error if version not valid?
+        type: boolean
+        default: false
+
+    outputs:
+      project:
+        description: Project name (taken from repo)
+        value: ${{ jobs.meta.outputs.project }}
+      coreName:
+        description: Minimal project name
+        value: ${{ jobs.meta.outputs.coreName }}
+      fullVersion:
+        description: Full version number (with no v prefix)
+        value: ${{ jobs.meta.outputs.fullVersion }}
+      majorVersion:
+        description: Just the first portion of the version number
+        value: ${{ jobs.meta.outputs.majorVersion }}
+      significantVersion:
+        description: All of the significant parts of the version number
+        value: ${{ jobs.meta.outputs.significantVersion }}
+      currentBranch:
+        description: Name of the current branch of the project
+        value: ${{ jobs.meta.outputs.currentBranch }}
+      homepage:
+        description: Project homepage
+        value: ${{ jobs.meta.outputs.homepage }}
+      topics:
+        description: Project topics
+        value: ${{ jobs.meta.outputs.topics }}
+      linuxName:
+        description: Name that would be given to a library for this project on Linux
+        value: ${{ jobs.meta.outputs.linuxName }}
+      macName:
+        description: Name that would be given to a library for this project on MacOS
+        value: ${{ jobs.meta.outputs.macName }}
+      winName:
+        description: Filename that would be given to a DLL for this project on Windows
+        value: ${{ jobs.meta.outputs.winName }}
+
+jobs:
+  meta:
+    name: Metadata
+    runs-on: ubuntu-latest
+    outputs:
+      project: ${{ steps.name.outputs.project }}
+      coreName: ${{ steps.name.outputs.coreName }}
+      fullVersion: ${{ steps.version.outputs.full }}
+      majorVersion: ${{ steps.version.outputs.major }}
+      significantVersion: ${{ steps.version.outputs.significant }}
+      currentBranch: ${{ steps.repo.outputs.currentBranch }}
+      homepage: ${{ steps.repo.outputs.homepage }}
+      topics: ${{ steps.repo.outputs.topics }}
+      linuxName: lib${{ steps.name.outputs.coreName }}.so.${{ steps.version.outputs.significant }}
+      macName: lib${{ steps.name.outputs.coreName }}.${{ steps.version.outputs.significant }}.dylib
+      winName: ${{ steps.name.outputs.coreName }}-${{ steps.version.outputs.significant }}.dll
+
+    steps:
+      - name: Dump GitHub context
+        if: true
+        env:
+          GITHUB_CONTEXT: ${{ toJSON(github) }}
+        run: echo "$GITHUB_CONTEXT"
+
+      - name: Get Name
+        id: name
+        run: |
+          project=${githubRepository#*/}
+          if [ "$project" == "$githubRespositoryName" ] ; then
+            echo "project == githubRespositoryName $project == $githubRespositoryName"
+          fi
+          if [ "$coreName" == "" ] ; then
+            coreName=$project
+          fi
+          echo "::set-output name=project::$project"
+          echo "::set-output name=coreName::$coreName"
+        env:
+          githubRepository: ${{ github.repository }}
+          projectCoreName: ${{ inputs.coreName }}
+          githubRepositoryName: ${{ github.event.repository.name }}
+
+      - name: Repo Details
+        id: repo
+        run: |
+          currentBranch=${GITHUB_REF#refs/heads/}
+          echo Branches current $currentBranch default $d efaultBranch
+          if [[ $currentBranch == refs/tags/* ]] ; then
+            currentBranch=$defaultBranch
+          fi
+          echo "::set-output name=currentBranch::$currentBranch"
+          if [ "$homepage" == "" ] ; then
+            homepage="$htmlUrl"
+          fi
+          if [ "$homepage" == "" ] ; then
+            homepage="https://stirlinglabs.com"
+          fi
+          echo "::set-output name=homepage::$homepage"
+          topics=$(echo $topics | jq -r '.[]')
+          echo "::set-output name=topics::$topics"
+        env:
+          defaultBranch: ${{ github.event.repository.default_branch }}
+          homepage: ${{ github.event.repository.homepage }}
+          htmlUrl: ${{ github.event.repository.html_url }}
+          topics: ${{ toJSON(github.event.repository.topics) }}
+
+      - name: Good Version
+        id: version
+        if: |
+            github.ref_type == 'tag' &&
+            startsWith(github.ref_name, 'v')
+        run: |
+          fullVersion=${version:1}
+          arrayVersion=(${fullVersion//./ })
+          majorVersion=${arrayVersion[0]}
+          significantVersion=""
+          dot=""
+          for v in "${arrayVersion[@]}" ; do
+            if (( 10#$v > 0 )) ; then
+              significantVersion=$significantVersion$dot$v
+              dot="."
+            fi
+          done
+          echo Full $fullVersion, Significant $significantVersion, Major $majorVersion ... minor ${arrayVersion[1]} patch ${arrayVersion[2]} package ${arrayVersion[3]}
+          if [[ $majorVersion =~ ^-?[0-9]+$ ]]; then
+            echo "::set-output name=full::$fullVersion"
+            echo "::set-output name=major::$majorVersion"
+            echo "::set-output name=significant::$significantVersion"
+          else
+            echo "{{ steps.name.outputs.project }} version ${version:1:2}, derived from -- $version -- is not numeric."
+            exit 1
+          fi
+        env:
+          version: ${{ github.ref_name }}
+
+      - name: Bad Version
+        if: |
+            github.ref_type != 'tag' ||
+            !startsWith(github.ref_name, 'v')
+        run: |
+          echo "The tag to be in the format v22.09.6"
+          if [ $strictVersion == "true" ] ; then
+            exit 1
+          fi
+        env:
+          strict: ${{ inputs.strictVersion }}
