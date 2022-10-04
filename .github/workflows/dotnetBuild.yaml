@@ -77,7 +77,7 @@ jobs:
         run: dotnet test ${{ steps.solution.outputs.sln }} --no-build -c Release -l:GitHubActions
 
       - name: Upload Artifacts
-        if: runner.os == Linux
+        if: runner.os == 'Linux'
         uses: actions/upload-artifact@v3
         with:
           name: ${{ needs.name.outputs.project }}
@@ -86,7 +86,7 @@ jobs:
           if-no-files-found: error
 
       - name: Save coverage to storage branch
-        if: runner.os == Linux
+        if: runner.os == 'Linux'
         uses: StirlingLabs/BranchStorageAction@v21.07.3
         with:
           comment: |
