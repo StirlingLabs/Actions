@@ -19,15 +19,18 @@ on:
       coreName:
         description: Minimal project name
         value: ${{ jobs.meta.outputs.coreName }}
-      fullVersion:
+      textVersion:
+        description: Full version number (with v prefix)
+        value: ${{ jobs.version.outputs.text }}
+      numericVersion:
         description: Full version number (with no v prefix)
-        value: ${{ jobs.meta.outputs.fullVersion }}
+        value: ${{ jobs.version.outputs.numeric }}
       majorVersion:
         description: Just the first portion of the version number
-        value: ${{ jobs.meta.outputs.majorVersion }}
+        value: ${{ jobs.version.outputs.major }}
       significantVersion:
         description: All of the significant parts of the version number
-        value: ${{ jobs.meta.outputs.significantVersion }}
+        value: ${{ jobs.version.outputs.significant }}
       currentBranch:
         description: Name of the current branch of the project
         value: ${{ jobs.meta.outputs.currentBranch }}
@@ -48,15 +51,16 @@ on:
         value: ${{ jobs.meta.outputs.winName }}
 
 jobs:
+  version:
+    name: Determine Version
+    uses: ./.github/workflows/version.yaml@main
+
   meta:
     name: Metadata
     runs-on: ubuntu-latest
     outputs:
       project: ${{ steps.name.outputs.project }}
       coreName: ${{ steps.name.outputs.coreName }}
-      fullVersion: ${{ steps.version.outputs.full }}
-      majorVersion: ${{ steps.version.outputs.major }}
-      significantVersion: ${{ steps.version.outputs.significant }}
       currentBranch: ${{ steps.repo.outputs.currentBranch }}
       homepage: ${{ steps.repo.outputs.homepage }}
       topics: ${{ steps.repo.outputs.topics }}
@@ -111,44 +115,3 @@ jobs:
           homepage: ${{ github.event.repository.homepage }}
           htmlUrl: ${{ github.event.repository.html_url }}
           topics: ${{ toJSON(github.event.repository.topics) }}
-
-      - name: Good Version
-        id: version
-        if: |
-            github.ref_type == 'tag' &&
-            startsWith(github.ref_name, 'v')
-        run: |
-          fullVersion=${version:1}
-          arrayVersion=(${fullVersion//./ })
-          majorVersion=${arrayVersion[0]}
-          significantVersion=""
-          dot=""
-          for v in "${arrayVersion[@]}" ; do
-            if (( 10#$v > 0 )) ; then
-              significantVersion=$significantVersion$dot$v
-              dot="."
-            fi
-          done
-          echo Full $fullVersion, Significant $significantVersion, Major $majorVersion ... minor ${arrayVersion[1]} patch ${arrayVersion[2]} package ${arrayVersion[3]}
-          if [[ $majorVersion =~ ^-?[0-9]+$ ]]; then
-            echo "::set-output name=full::$fullVersion"
-            echo "::set-output name=major::$majorVersion"
-            echo "::set-output name=significant::$significantVersion"
-          else
-            echo "{{ steps.name.outputs.project }} version ${version:1:2}, derived from -- $version -- is not numeric."
-            exit 1
-          fi
-        env:
-          version: ${{ github.ref_name }}
-
-      - name: Bad Version
-        if: |
-            github.ref_type != 'tag' ||
-            !startsWith(github.ref_name, 'v')
-        run: |
-          echo "The tag to be in the format v22.09.6"
-          if [ $strictVersion == "true" ] ; then
-            exit 1
-          fi
-        env:
-          strict: ${{ inputs.strictVersion }}
