@@ -1,0 +1,89 @@
+name: .Net Release
+
+on:
+  workflow_call:
+    inputs:
+      name:
+        description: The name of the release (for release artifacts)
+        type: string
+        required: false
+      version:
+        description: Version of this release
+        type: string
+        required: false
+      nuget:
+        description: Push NuPkg to nuget.org
+        type: boolean
+        default: false
+    secrets:
+      githubToken:
+        description: GitHub token
+        required: true
+      nugetToken:
+        description: nuget.org API Key
+        required: true
+
+jobs:
+  version:
+    name: Determine Version
+    uses: ./.github/workflows/version.yaml@main
+    with:
+      version: ${{ inputs.version }}
+
+  release:
+    name: .Net Release
+    runs-on: ubuntu-22.04
+    needs: version
+    steps:
+      - name: Get name
+        id: name
+        if: inputs.name == ""
+        runs: |
+          if [ "$releaseName" == "" ] ; then
+            releaseName="$repoName $version"
+          fi
+          echo "::set-output name=release::$releaseName"
+        env:
+          nuPkgName: ${{ inputs.name }}
+          repoName: ${{ github.event.repository.name }}
+          version: ${{ needs.version.outputs.text }}
+          
+      - uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v0.1.12
+        with:
+          name: ${{ steps.name.outputs.release }}
+          files: |
+            artifacts/**
+
+      - name: NuGet Auth
+        uses: StirlingLabs/GithubNugetAuthAction@main
+
+      - name: Push NuPkg to GitHub
+        if: |
+          inputs.nuget != true ||
+          needs.version.outputs.preRelease == true
+        run: |
+          dotnet nuget push artifacts/*.nupkg -k $token -s $url -n 1 --skip-duplicate
+          if [ $? -ne 0 ] ; then
+            echo "dotnet nuget push to GitHub returned errorlevel $?"
+          fi
+        env:
+          token: ${{ secrets.githubToken }}
+          url: "https://nuget.pkg.github.com/${{github.repository_owner}}/index.json"
+
+      - name: Push NuPkg to NuGet
+        if: |
+          inputs.nuget == true &&
+          needs.version.outputs.preRelease != true
+        run: |
+          dotnet nuget push artifacts/*.nupkg -k $token -s $url -n 1 --skip-duplicate
+          if [ $? -ne 0 ] ; then
+            echo "dotnet nuget push to nuget.org returned errorlevel $?"
+          fi
+        env:
+          token: ${{ secrets.nugetToken }}
+          url: "https://api.nuget.org/v3/index.json"
