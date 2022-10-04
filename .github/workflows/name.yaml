@@ -1,0 +1,44 @@
+name: Name
+
+on:
+  workflow_call:
+    inputs:
+      coreName:
+        description: The core (most minimal) name of the project
+        type: string
+        required: false
+
+    outputs:
+      project:
+        description: Project name (taken from repo)
+        value: ${{ jobs.name.outputs.project }}
+      core:
+        description: Minimal project name
+        value: ${{ jobs.name.outputs.core }}
+
+jobs:
+  name:
+    name: Get Name
+    runs-on: ubuntu-latest
+    outputs:
+      project: ${{ steps.name.outputs.project }}
+      core: ${{ steps.name.outputs.coreName }}
+
+    steps:
+      - name: Get Name
+        id: name
+        run: |
+          project=${githubRepository#*/}
+          if [ "$project" == "$githubRespositoryName" ] ; then
+            echo "project == githubRespositoryName $project == $githubRespositoryName"
+          fi
+          if [ "$coreName" == "" ] ; then
+            coreName=$project
+          fi
+          echo "::set-output name=project::$project"
+          echo "::set-output name=coreName::$coreName"
+        env:
+          githubRepository: ${{ github.repository }}
+          projectCoreName: ${{ inputs.coreName }}
+          githubRepositoryName: ${{ github.event.repository.name }}
+

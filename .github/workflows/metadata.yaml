@@ -14,11 +14,11 @@ on:
 
     outputs:
       project:
-        description: Project name (taken from repo)
-        value: ${{ jobs.meta.outputs.project }}
+        description: Project name
+        value: ${{ jobs.name.outputs.project }}
       coreName:
         description: Minimal project name
-        value: ${{ jobs.meta.outputs.coreName }}
+        value: ${{ jobs.name.outputs.core }}
       textVersion:
         description: Full version number (with v prefix)
         value: ${{ jobs.version.outputs.text }}
@@ -51,49 +51,37 @@ on:
         value: ${{ jobs.meta.outputs.winName }}
 
 jobs:
+  name:
+    name: Determine Name
+    uses: ./.github/workflows/name.yaml
+    with:
+      coreName: ${{ inputs.coreName }}
+
   version:
     name: Determine Version
-    uses: ./.github/workflows/version.yaml@main
+    uses: ./.github/workflows/version.yaml
 
   meta:
     name: Metadata
     runs-on: ubuntu-latest
+    needs: [ name, version ]
     outputs:
-      project: ${{ steps.name.outputs.project }}
-      coreName: ${{ steps.name.outputs.coreName }}
-      currentBranch: ${{ steps.repo.outputs.currentBranch }}
-      homepage: ${{ steps.repo.outputs.homepage }}
-      topics: ${{ steps.repo.outputs.topics }}
-      linuxName: lib${{ steps.name.outputs.coreName }}.so.${{ steps.version.outputs.significant }}
-      macName: lib${{ steps.name.outputs.coreName }}.${{ steps.version.outputs.significant }}.dylib
-      winName: ${{ steps.name.outputs.coreName }}-${{ steps.version.outputs.significant }}.dll
+      currentBranch: ${{ steps.branch.outputs.currentBranch }}
+      homepage: ${{ steps.url.outputs.homepage }}
+      topics: ${{ steps.topics.outputs.topics }}
+      linuxName: lib${{ needs.name.outputs.coreName }}.so.${{ needs.version.outputs.significant }}
+      macName: lib${{ needs.name.outputs.coreName }}.${{ needs.version.outputs.significant }}.dylib
+      winName: ${{ needs.name.outputs.coreName }}-${{ needs.version.outputs.significant }}.dll
 
     steps:
       - name: Dump GitHub context
-        if: true
+        if: false
         env:
           GITHUB_CONTEXT: ${{ toJSON(github) }}
         run: echo "$GITHUB_CONTEXT"
 
-      - name: Get Name
-        id: name
-        run: |
-          project=${githubRepository#*/}
-          if [ "$project" == "$githubRespositoryName" ] ; then
-            echo "project == githubRespositoryName $project == $githubRespositoryName"
-          fi
-          if [ "$coreName" == "" ] ; then
-            coreName=$project
-          fi
-          echo "::set-output name=project::$project"
-          echo "::set-output name=coreName::$coreName"
-        env:
-          githubRepository: ${{ github.repository }}
-          projectCoreName: ${{ inputs.coreName }}
-          githubRepositoryName: ${{ github.event.repository.name }}
-
-      - name: Repo Details
-        id: repo
+      - name: Get Branch
+        id: branch
         run: |
           currentBranch=${GITHUB_REF#refs/heads/}
           echo Branches current $currentBranch default $d efaultBranch
@@ -101,6 +89,12 @@ jobs:
             currentBranch=$defaultBranch
           fi
           echo "::set-output name=currentBranch::$currentBranch"
+        env:
+          defaultBranch: ${{ github.event.repository.default_branch }}
+
+      - name: Homepage
+        id: url
+        run: |
           if [ "$homepage" == "" ] ; then
             homepage="$htmlUrl"
           fi
@@ -108,10 +102,20 @@ jobs:
             homepage="https://stirlinglabs.com"
           fi
           echo "::set-output name=homepage::$homepage"
-          topics=$(echo $topics | jq -r '.[]')
-          echo "::set-output name=topics::$topics"
         env:
-          defaultBranch: ${{ github.event.repository.default_branch }}
           homepage: ${{ github.event.repository.homepage }}
           htmlUrl: ${{ github.event.repository.html_url }}
+
+      - name: Topics
+        id: topics
+        run: |
+          topicsArray=$(echo $topics | jq -r '.[]')
+          topics=""
+          space=""
+          for topic in "${topicsArray[@]}" ; do
+            topics="$topics$space$topic"
+            space=" "
+          done
+          echo "::set-output name=topics::$topics"
+        env:
           topics: ${{ toJSON(github.event.repository.topics) }}
