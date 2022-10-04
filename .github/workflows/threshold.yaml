@@ -6,6 +6,9 @@ on:
       continue:
         description: "Processing on this repo should continue"
         value: ${{ jobs.check.outputs.continue }}
+      release:
+        description: "This version is a release"
+        value: ${{ jobs.check.outputs.release }}
 
 jobs:
   check:
@@ -14,6 +17,7 @@ jobs:
     continue-on-error: true
     outputs:
       continue: ${{ !steps.collate_checks.outputs.should_skip }}
+      release: ${{ !steps.released_check.outputs.release }}
     steps:
       - name: Dump GitHub context
         if: false
@@ -45,6 +49,7 @@ jobs:
             startsWith(github.ref_name, 'v')
         run: |
             echo "::set-output name=should_skip::false"
+            echo "::set-output name=release::true"
       - name: Check if changes pushed
         id: push_new_check
         if: |
