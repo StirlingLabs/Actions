@@ -7,6 +7,10 @@ on:
         description: Version of this release
         type: string
         required: false
+      strict:
+        description: Error if the version number is invalid
+        type: boolean
+        default: true
 
     outputs:
       text:
@@ -118,8 +122,10 @@ jobs:
 
       - name: Bad Version
         if: |
-            steps.version.outputs.numeric == '' ||
-            steps.process.outputs.preRelease == ''
+            inputs.strict == 'true' &&
+            ( steps.version.outputs.numeric == '' ||
+              steps.process.outputs.preRelease == ''
+            )
         run: |
           echo "The version tag should be in the format v22.09.6, v22.09.6rc1 or similar."
           exit 1

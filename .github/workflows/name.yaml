@@ -35,6 +35,7 @@ jobs:
           if [ "$coreName" == "" ] ; then
             coreName=$project
           fi
+          echo Project $project, core $coreName
           echo "::set-output name=project::$project"
           echo "::set-output name=coreName::$coreName"
         env:

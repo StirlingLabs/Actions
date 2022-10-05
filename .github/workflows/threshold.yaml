@@ -98,11 +98,11 @@ jobs:
           [[ "$push_new_status" == "skipped" || "$push_new_output" != "true" ]] && push_new_result=false || push_new_result=true 
           [[ "$skipchks_status" == "skipped" || "$skipchks_output" != "true" ]] && skipchks_result=false || skipchks_result=true 
 
-          echo force_ci_status $force_ci_status force_ci_output $force_ci_output force_ci_result $force_ci_result
-          echo pr_draft_status $pr_draft_status pr_draft_output $pr_draft_output pr_draft_result $pr_draft_result
-          echo released_status $released_status released_output $released_output released_result $released_result
-          echo push_new_status $push_new_status push_new_output $push_new_output push_new_result $push_new_result
-          echo skipchks_status $skipchks_status skipchks_output $skipchks_output skipchks_result $skipchks_result
+          echo "force_ci status '$force_ci_status' output '$force_ci_output' result '$force_ci_result'"
+          echo "pr_draft status '$pr_draft_status' output '$pr_draft_output' result '$pr_draft_result'"
+          echo "released status '$released_status' output '$released_output' result '$released_result'"
+          echo "push_new status '$push_new_status' output '$push_new_output' result '$push_new_result'"
+          echo "skipchks status '$skipchks_status' output '$skipchks_output' result '$skipchks_result'"
 
           if [ "$force_ci_result" == "true" ] ; then
             echo Forcing processing.
