@@ -110,8 +110,20 @@ jobs:
             artifacts/*.nupkg
           if-no-files-found: error
 
+      - name: Save coverage to PR
+        if: |
+          github.event_name == 'pull_request' &&
+          runner.os == 'Linux'
+        uses: StirlingLabs/PROutputAction@v1.0.1
+        with:
+          sources: '.github/coverage/prefix,coverage/,.github/coverage/suffix'
+          token: ${{github.token}}
+          comment: |
+
       - name: Save coverage to storage branch
-        if: runner.os == 'Linux'
+        if: |
+          github.event_name == 'push' &&
+          runner.os == 'Linux'
         uses: StirlingLabs/BranchStorageAction@v21.07.3
         with:
           comment: |
