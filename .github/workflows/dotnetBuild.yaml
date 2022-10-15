@@ -75,12 +75,6 @@ jobs:
         env:
           solution: ${{ inputs.solution }}
 
-      - name: Install .Net 6
-        id: dotnet6
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt install dotnet6
-
       - name: NuGet Auth
         uses: StirlingLabs/GithubNugetAuthAction@main
 

@@ -84,7 +84,7 @@ jobs:
         id: branch
         run: |
           currentBranch=${GITHUB_REF#refs/heads/}
-          echo Branches current $currentBranch default $d efaultBranch
+          echo Branches current $currentBranch default $defaultBranch
           if [[ $currentBranch == refs/tags/* ]] ; then
             currentBranch=$defaultBranch
           fi
