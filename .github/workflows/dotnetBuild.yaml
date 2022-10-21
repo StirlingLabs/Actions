@@ -141,7 +141,7 @@ jobs:
           rm -rf **/{bin,obj}/**
 
       - name: Test NuPkgs
-        if: inputs.release == true
+        if: inputs.release == 'true'
         run: |
           if [ -d "$testProject" ]; then
             dotnet restore "$testProject" -p:Configuration=Release -p:UseBuiltNuPkg=True
