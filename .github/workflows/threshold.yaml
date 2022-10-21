@@ -110,9 +110,9 @@ jobs:
 
           # summarise what we're doing
           if [[ "$process" == "true" ]] ; then
-            [[ "$push_new_result" == "true" ]] && message = "changes were pushed to the repo" 
-            [[ "$pr_draft_result" == "true" ]] && message = "this is an active pull request"
-            [[ "$force_ci_result" == "true" ]] && message = "it was forced by the commit message" 
+            [[ "$push_new_result" == "true" ]] && message="changes were pushed to the repo" 
+            [[ "$pr_draft_result" == "true" ]] && message="this is an active pull request"
+            [[ "$force_ci_result" == "true" ]] && message="it was forced by the commit message" 
             echo "### Processing continuing since ${message}." >> $GITHUB_STEP_SUMMARY
           else
             echo "### Continued processing does not appear to be necessary." >> $GITHUB_STEP_SUMMARY
