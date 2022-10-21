@@ -90,14 +90,12 @@ jobs:
           pr_draft_output: ${{ steps.pr_draft_check.outputs.process }}
           released_output: ${{ steps.released_check.outputs.process }}
           push_new_output: ${{ steps.push_new_check.outputs.should_skip }}
-          push_new_checks: ${{ !steps.push_new_check.outputs.should_skip }}
           skipchks_output: ${{ steps.skipped_checks.outputs.process }}
         run: |
           [[ "$force_ci_status" == "skipped" || "$force_ci_output" != "true" ]] && force_ci_result=false || force_ci_result=true 
           [[ "$pr_draft_status" == "skipped" || "$pr_draft_output" != "true" ]] && pr_draft_result=false || pr_draft_result=true
           [[ "$released_status" == "skipped" || "$released_output" != "true" ]] && released_result=false || released_result=true 
           [[ "$push_new_status" == "skipped" || "$push_new_output" != "false" ]] && push_new_result=false || push_new_result=true 
-          [[ "$push_new_status" == "skipped" || "$push_new_checks" != "true" ]] && push_new_chekkk=false || push_new_chekkk=true 
           [[ "$skipchks_status" == "skipped" || "$skipchks_output" != "true" ]] && skipchks_result=false || skipchks_result=true 
 
           echo "force_ci status '$force_ci_status' output '$force_ci_output' -> '$force_ci_result'"
