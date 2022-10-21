@@ -107,11 +107,16 @@ jobs:
           echo "push_new status '$push_new_status' output '$push_new_checks' -> '$push_new_chekkk'"
           echo "skipchks status '$skipchks_status' output '$skipchks_output' -> '$skipchks_result'"
 
-          if [ "$force_ci_result" == "true" ] ; then
-            echo Forcing processing.
-            echo "::set-output name=process::true"
-          else 
-            [[ "$pr_draft_result $released_result $push_new_result $skipchks_result" == *"true"* ]] && process=true || process=false
-            echo "Continue processing: $process"
-            echo "::set-output name=process::$process"
+          # if any are true, processing should be true
+          [[ "$force_ci_result $pr_draft_result $released_result $push_new_result $skipchks_result" == *"true"* ]] && process=true || process=false
+
+          # summarise what we're doing
+          if [[ "$process" == "true" ]] ; then
+            [[ "$push_new_result" == "true" ]] && message = "changes were pushed to the repo" 
+            [[ "$pr_draft_result" == "true" ]] && message = "this is an active pull request"
+            [[ "$force_ci_result" == "true" ]] && message = "it was forced by the commit message" 
+            echo "### Processing continuing since ${message}." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Continued processing does not appear to be necessary." >> $GITHUB_STEP_SUMMARY
           fi
+          echo "process=$process" >> $GITHUB_OUTPUT
