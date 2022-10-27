@@ -15,13 +15,6 @@ on:
         description: Push NuPkg to nuget.org
         type: boolean
         default: false
-    secrets:
-      githubToken:
-        description: GitHub token
-        required: true
-      nugetToken:
-        description: nuget.org API Key
-        required: true
 
 jobs:
   version:
@@ -37,7 +30,7 @@ jobs:
     steps:
       - name: Get name
         id: name
-        if: inputs.name == ""
+        if: inputs.name == ''
         run: |
           if [ "$releaseName" == "" ] ; then
             releaseName="$repoName $version"
@@ -72,7 +65,7 @@ jobs:
             echo "dotnet nuget push to GitHub returned errorlevel $?"
           fi
         env:
-          token: ${{ secrets.githubToken }}
+          token: ${{ github.token }}
           url: "https://nuget.pkg.github.com/${{github.repository_owner}}/index.json"
 
       - name: Push NuPkg to NuGet
@@ -85,5 +78,5 @@ jobs:
             echo "dotnet nuget push to nuget.org returned errorlevel $?"
           fi
         env:
-          token: ${{ secrets.nugetToken }}
+          token: ${{ secrets.NUGET_STIRLINGLABS_API_KEY }}
           url: "https://api.nuget.org/v3/index.json"
