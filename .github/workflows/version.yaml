@@ -23,10 +23,13 @@ on:
         description: Just the first number from the version
         value: ${{ jobs.version.outputs.major }}
       significant:
-        description: All of the significant digits of the version number
+        description: The significant digits of the version number
         value: ${{ jobs.version.outputs.significant }}
+      triple:
+        description: The first 3 significant digits of the version
+        value: ${{ jobs.version.outputs.triple }}
       preRelease:
-        description: Boolean flag, true if version is pre-release
+        description: Boolean, true if version is pre-release
         value: ${{ jobs.version.outputs.preRelease }}
 
 jobs:
@@ -38,6 +41,7 @@ jobs:
       numeric: ${{ steps.version.outputs.full }}
       major: ${{ steps.process.outputs.major }}
       significant: ${{ steps.process.outputs.significant }}
+      triple: ${{ steps.process.outputs.triple }}
       preRelease: ${{ steps.process.outputs.preRelease }}
     steps:
       - name: Get tags
@@ -88,13 +92,14 @@ jobs:
           arrayVersion=(${numericVersion//./ })
           majorVersion=${arrayVersion[0]}
           significantVersion=""
+          tripleVersion=""
           dot=""
           digit=0
-          re='^[0-9]+$'
+          number='^[0-9]+$'
           for v in "${arrayVersion[@]}" ; do
-            if ! [[ "$v" =~ $re ]] ; then
+            if ! [[ "$v" =~ $number ]] ; then
               echo "Digit $digit ($v) is not entirely numeric."
-              if [ digit EQU 2 ] ; then
+              if [ $digit -eq 2 ] ; then
                 preFlags=(pre rc a alpha b beta)
                 for flag in ${preFlags[@]} ; do
                   if [[ "$v" =~ $flag ]] ; then
@@ -107,15 +112,22 @@ jobs:
                 exit 1
               fi
             fi
-            if (( 10#$v > 0 )) ; then
-              significantVersion=$significantVersion$dot$v
+            if [ $digit -le 2 ] || [ $v -gt 0 ] ; then 
+              significantVersion=${significantVersion}${dot}${v}
+              if [ $digit -le 2 ] ; then
+                tripleVersion=${tripleVersion}${dot}${v}
+              fi
               dot="."
             fi
             digit=$((digit+1))
           done
+          for (( i=$digit; i<2; i++ )) ; do
+            tripleVersion=${tripleVersion}.0
+          done
           echo Significant $significantVersion, Major $majorVersion, pre=$preRelease ... minor ${arrayVersion[1]} patch ${arrayVersion[2]} package ${arrayVersion[3]}
           echo "::set-output name=major::$majorVersion"
           echo "::set-output name=significant::$significantVersion"
+          echo "::set-output name=triple::$tripleVersion"
           echo "::set-output name=preRelease::$preRelease"
         env:
           numericVersion: ${{ steps.version.outputs.numeric }}
