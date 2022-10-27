@@ -85,13 +85,7 @@ jobs:
 
       - name: Build
         run: |
-          versionArgs=""
-          if [[ "$release" == "true" ]] ; then
-            versionArgs="-p:VersionPrefix=${version} -p:VersionSuffix=${runNumber}"
-          else
-            echo "Release is $release, won't specify version."
-          fi
-          dotnet build $solution -c Release $versionArgs --no-restore
+          dotnet build $solution -c Release --no-restore
         env:
           solution: ${{ steps.solution.outputs.sln }}
           release: ${{ inputs.release }}
