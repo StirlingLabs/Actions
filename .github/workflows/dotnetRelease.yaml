@@ -60,7 +60,7 @@ jobs:
           inputs.nuget != true ||
           needs.version.outputs.preRelease == true
         run: |
-          dotnet nuget push artifacts/**/*.nupkg -k $token -s $url -n 1 --skip-duplicate
+          dotnet nuget push artifacts/**/*.nupkg -k $token -s $url -n --skip-duplicate
           if [ $? -ne 0 ] ; then
             echo "dotnet nuget push to GitHub returned errorlevel $?"
           fi
@@ -73,7 +73,7 @@ jobs:
           inputs.nuget == true &&
           needs.version.outputs.preRelease != true
         run: |
-          dotnet nuget push artifacts/**/*.nupkg -k $token -s $url -n 1 --skip-duplicate
+          dotnet nuget push artifacts/**/*.nupkg -k $token -s $url -n --skip-duplicate
           if [ $? -ne 0 ] ; then
             echo "dotnet nuget push to nuget.org returned errorlevel $?"
           fi
