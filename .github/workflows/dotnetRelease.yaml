@@ -59,24 +59,20 @@ jobs:
         if: |
           inputs.nuget != true ||
           needs.version.outputs.preRelease == true
-        run: |
-          dotnet nuget push artifacts/**/*.nupkg -k $token -s $url -n --skip-duplicate
-          if [ $? -ne 0 ] ; then
-            echo "dotnet nuget push to GitHub returned errorlevel $?"
-          fi
         env:
           token: ${{ github.token }}
           url: "https://nuget.pkg.github.com/${{github.repository_owner}}/index.json"
+        run: |
+          dotnet nuget push artifacts/**/*.nupkg --api-key $token --source $url --no-symbols --skip-duplicate
+          [ $? -ne 0 ] && echo "dotnet nuget push to GitHub returned errorlevel $?" || echo "Success."
 
       - name: Push NuPkg to NuGet
         if: |
           inputs.nuget == true &&
           needs.version.outputs.preRelease != true
-        run: |
-          dotnet nuget push artifacts/**/*.nupkg -k $token -s $url -n --skip-duplicate
-          if [ $? -ne 0 ] ; then
-            echo "dotnet nuget push to nuget.org returned errorlevel $?"
-          fi
         env:
           token: ${{ secrets.NUGET_STIRLINGLABS_API_KEY }}
           url: "https://api.nuget.org/v3/index.json"
+        run: |
+          dotnet nuget push artifacts/**/*.nupkg --api-key $token --source $url --no-symbols --skip-duplicate
+          [ $? -ne 0 ] && echo "dotnet nuget push to nuget.org returned errorlevel $?" || echo "Success."
