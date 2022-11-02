@@ -3,6 +3,14 @@ name: Metadata
 on:
   workflow_call:
     inputs:
+      repo:
+        description: The 'owner/repo' string of the repository to be processed
+        type: string
+        default: ${{ github.repository }}
+      ref:
+        description: The git reference of the commit to be processed
+        type: string
+        default: ${{ github.ref }} # perhaps ref_name & ref_type instead?
       coreName:
         description: The core (most minimal) name of the project
         type: string
@@ -31,15 +39,21 @@ on:
       significantVersion:
         description: All of the significant parts of the version number
         value: ${{ jobs.version.outputs.significant }}
+      tripleVersion:
+        description: The dotted triple that makes up traditional versioning
+        value: ${{ jobs.version.outputs.triple }}
       currentBranch:
         description: Name of the current branch of the project
         value: ${{ jobs.meta.outputs.currentBranch }}
       homepage:
         description: Project homepage
         value: ${{ jobs.meta.outputs.homepage }}
+      description:
+        description: Project description
+        value: ${{ jobs.meta.outputs.description }}
       topics:
-        description: Project topics
-        value: ${{ jobs.meta.outputs.topics }}
+        description: Project topics in JSON array
+        value: ${{ jobs.meta.outputs.topicsJson }}
       linuxName:
         description: Name that would be given to a library for this project on Linux
         value: ${{ jobs.meta.outputs.linuxName }}
@@ -68,7 +82,8 @@ jobs:
     outputs:
       currentBranch: ${{ steps.branch.outputs.currentBranch }}
       homepage: ${{ steps.url.outputs.homepage }}
-      topics: ${{ steps.topics.outputs.topics }}
+      description: ${{ steps.meta.outputs.description }}
+      topics: ${{ steps.api.outputs.topics }}
       linuxName: lib${{ needs.name.outputs.coreName }}.so.${{ needs.version.outputs.significant }}
       macName: lib${{ needs.name.outputs.coreName }}.${{ needs.version.outputs.significant }}.dylib
       winName: ${{ needs.name.outputs.coreName }}-${{ needs.version.outputs.significant }}.dll
@@ -80,6 +95,37 @@ jobs:
           GITHUB_CONTEXT: ${{ toJSON(github) }}
         run: echo "$GITHUB_CONTEXT"
 
+      - name: Set Variables
+        id: api
+        env:
+          repo: ${{ inputs.repo }}
+          defaultBranch: ${{ github.event.repository.default_branch }}
+          homepage: ${{ github.event.repository.homepage }}
+          htmlUrl: ${{ github.event.repository.html_url }}
+          topics: ${{ toJSON(github.event.repository.topics) }}
+        run: |
+          # init
+          url="https://api.github.com/repos/${repo}"
+          echo "url=${url}" >> $GITHUB_OUTPUT
+          json=""
+          # Define function
+          updateValue() {
+            [[ "$1" != "" ]] && _var="$1" || exit 1
+            [[ "$2" != "" ]] && _term="$2" || _term="$1"
+            # if the value is an empty string or empty array
+            if [[ "${!_var}" =~ "^$|\[[[:space:]]*\]" ]] ; then
+              [[ "$json" == "" ]] && json=$(curl -s $url);
+              read "${_var}" <<< $(jq -r ".${_term}" <<< "$json")
+            fi
+            echo "${_var}=${!_var}" >> $GITHUB_OUTPUT
+          }
+          # Do work
+          updateValue "defaultBranch" "default_branch"
+          updateValue "homepage"
+          updateValue "htmlUrl" "html_url"
+          updateValue "topics"
+          updateValue "description"
+
       - name: Get Branch
         id: branch
         run: |
@@ -88,12 +134,15 @@ jobs:
           if [[ $currentBranch == refs/tags/* ]] ; then
             currentBranch=$defaultBranch
           fi
-          echo "::set-output name=currentBranch::$currentBranch"
+          echo "currentBranch=${currentBranch}" >> $GITHUB_OUTPUT
         env:
-          defaultBranch: ${{ github.event.repository.default_branch }}
+          defaultBranch: ${{ steps.api.outputs.defaultBranch }}
 
       - name: Homepage
         id: url
+        env:
+          homepage: ${{ steps.api.outputs.homepage }}
+          htmlUrl: ${{ steps.api.outputs.htmlUrl }}
         run: |
           if [ "$homepage" == "" ] ; then
             homepage="$htmlUrl"
@@ -101,21 +150,4 @@ jobs:
           if [ "$homepage" == "" ] ; then
             homepage="https://stirlinglabs.com"
           fi
-          echo "::set-output name=homepage::$homepage"
-        env:
-          homepage: ${{ github.event.repository.homepage }}
-          htmlUrl: ${{ github.event.repository.html_url }}
-
-      - name: Topics
-        id: topics
-        run: |
-          topicsArray=$(echo $topics | jq -r '.[]')
-          topics=""
-          space=""
-          for topic in "${topicsArray[@]}" ; do
-            topics="$topics$space$topic"
-            space=" "
-          done
-          echo "::set-output name=topics::$topics"
-        env:
-          topics: ${{ toJSON(github.event.repository.topics) }}
+          echo "homepage=${homepage}" >> $GITHUB_OUTPUT
