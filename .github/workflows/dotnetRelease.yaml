@@ -35,7 +35,7 @@ jobs:
           if [ "$releaseName" == "" ] ; then
             releaseName="$repoName $version"
           fi
-          echo "::set-output name=release::$releaseName"
+          echo "release=$releaseName" >> $GITHUB_OUTPUT
         env:
           nuPkgName: ${{ inputs.name }}
           repoName: ${{ github.event.repository.name }}

@@ -46,7 +46,6 @@ jobs:
     env:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
-
     steps:
       - uses: actions/checkout@v3
         with:
@@ -71,7 +70,7 @@ jobs:
               exit 1
             fi
           fi
-          echo "::set-output name=sln::$solution"
+          echo "sln=$solution" >> $GITHUB_OUTPUT
         env:
           solution: ${{ inputs.solution }}
 
@@ -148,3 +147,24 @@ jobs:
           fi
         env:
           testProject: ${{ needs.name.outputs.project }}.Tests
+
+      - name: Summary
+        id: summary
+        needs: [ name, version ]
+        env:
+          release: ${{ inputs.release }}
+          version: ${{ needs.version.outputs.text }}
+          project: ${{ needs.name.outputs.project }}
+          event: ${{ github.event_name }}
+        run: |
+          [[ "$release" == "true "]] && headline="Ready for release" || headline="Built & tested"
+          echo "### $headline on $RUNNER_OS" >> $GITHUB_STEP_SUMMARY
+          echo "- Project built sucessfully" >> $GITHUB_STEP_SUMMARY
+          echo "- Unit tests completed sucessfully" >> $GITHUB_STEP_SUMMARY
+          [[ "$release" == "true "]] && echo "- NuPkgs were tested successfully" >> $GITHUB_STEP_SUMMARY
+          if [[ "$event" == "pull_request" ]] ; then
+            echo "- Test coverage was updated in the PR" >> $GITHUB_STEP_SUMMARY
+          elif [[ "$event" == "push" ]] ; then
+            echo "- Test coverage was recorded in the `storage` branch" >> $GITHUB_STEP_SUMMARY
+          fi
+          

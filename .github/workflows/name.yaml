@@ -36,8 +36,8 @@ jobs:
             coreName=$project
           fi
           echo Project $project, core $coreName
-          echo "::set-output name=project::$project"
-          echo "::set-output name=coreName::$coreName"
+          echo "project=$project"  >> $GITHUB_OUTPUT
+          echo "coreName=$coreName" >> $GITHUB_OUTPUT
         env:
           githubRepository: ${{ github.repository }}
           projectCoreName: ${{ inputs.coreName }}

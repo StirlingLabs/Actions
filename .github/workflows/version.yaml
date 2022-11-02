@@ -50,7 +50,7 @@ jobs:
             github.ref_type == 'tag' &&
             startsWith(github.ref_name, 'v')
         run: |
-          echo "::set-output name=v::${refName:1}"
+          echo "v=${refName:1}" >> $GITHUB_OUTPUT
         env:
           refName: ${{ github.ref_name }}
 
@@ -59,7 +59,7 @@ jobs:
         if: |
             startsWith(inputs.version, 'v')
         run: |
-          echo "::set-output name=v::${input:1}"
+          echo "v=${input:1}" >> $GITHUB_OUTPUT
         env:
           input: ${{ inputs.version }}
 
@@ -76,9 +76,9 @@ jobs:
             fi
             numericVersion=${given}
           fi
-          echo "::set-output name=numeric::$numericVersion"
-          echo "::set-output name=text::v$numericVersion"
-          echo Core version is $numericVersion
+          echo "numeric=$numericVersion" >> $GITHUB_OUTPUT
+          echo "text=v$numericVersion" >> $GITHUB_OUTPUT
+          echo Core version is $numericVersion >> $GITHUB_OUTPUT
         env:
           given: ${{ steps.given.outputs.v }}
           tag: ${{ steps.tag.outputs.v }}
@@ -125,10 +125,10 @@ jobs:
             tripleVersion=${tripleVersion}.0
           done
           echo Significant $significantVersion, Major $majorVersion, pre=$preRelease ... minor ${arrayVersion[1]} patch ${arrayVersion[2]} package ${arrayVersion[3]}
-          echo "::set-output name=major::$majorVersion"
-          echo "::set-output name=significant::$significantVersion"
-          echo "::set-output name=triple::$tripleVersion"
-          echo "::set-output name=preRelease::$preRelease"
+          echo "major=$majorVersion" >> $GITHUB_OUTPUT
+          echo "significant=$significantVersion" >> $GITHUB_OUTPUT
+          echo "triple=$tripleVersion" >> $GITHUB_OUTPUT
+          echo "preRelease=$preRelease" >> $GITHUB_OUTPUT
         env:
           numericVersion: ${{ steps.version.outputs.numeric }}
 
