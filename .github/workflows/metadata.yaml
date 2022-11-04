@@ -34,7 +34,7 @@ on:
         description: Full version number (with no v prefix)
         value: ${{ jobs.version.outputs.numeric }}
       majorVersion:
-        description: Just the first portion of the version number
+        description: Just the first segment of the version number
         value: ${{ jobs.version.outputs.major }}
       significantVersion:
         description: All of the significant parts of the version number
@@ -42,6 +42,9 @@ on:
       tripleVersion:
         description: The dotted triple that makes up traditional versioning
         value: ${{ jobs.version.outputs.triple }}
+      preRelease:
+        description: Boolean, true if version is pre-release
+        value: ${{ jobs.version.outputs.preRelease }}
       currentBranch:
         description: Name of the current branch of the project
         value: ${{ jobs.meta.outputs.currentBranch }}
@@ -89,7 +92,7 @@ jobs:
       winName: ${{ needs.name.outputs.coreName }}-${{ needs.version.outputs.significant }}.dll
 
     steps:
-      - name: Dump GitHub context
+      - name: Debug
         if: false
         env:
           GITHUB_CONTEXT: ${{ toJSON(github) }}
@@ -128,6 +131,8 @@ jobs:
 
       - name: Get Branch
         id: branch
+        env:
+          defaultBranch: ${{ steps.api.outputs.defaultBranch }}
         run: |
           currentBranch=${GITHUB_REF#refs/heads/}
           echo Branches current $currentBranch default $defaultBranch
@@ -135,8 +140,6 @@ jobs:
             currentBranch=$defaultBranch
           fi
           echo "currentBranch=${currentBranch}" >> $GITHUB_OUTPUT
-        env:
-          defaultBranch: ${{ steps.api.outputs.defaultBranch }}
 
       - name: Homepage
         id: url
