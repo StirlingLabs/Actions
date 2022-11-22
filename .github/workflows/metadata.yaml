@@ -66,6 +66,15 @@ on:
       winName:
         description: Filename that would be given to a DLL for this project on Windows
         value: ${{ jobs.meta.outputs.winName }}
+      gitUrl:
+        description: Project git URL
+        value: ${{ jobs.meta.outputs.gitUrl }}
+      tagsUrl:
+        description: Project tags API URL
+        value: ${{ jobs.meta.outputs.tagsUrl }}
+      releasesUrl:
+        description: Project releases API URL
+        value: ${{ jobs.meta.outputs.releasesUrl }}
 
 jobs:
   name:
@@ -90,6 +99,9 @@ jobs:
       linuxName: lib${{ needs.name.outputs.coreName }}.so.${{ needs.version.outputs.significant }}
       macName: lib${{ needs.name.outputs.coreName }}.${{ needs.version.outputs.significant }}.dylib
       winName: ${{ needs.name.outputs.coreName }}-${{ needs.version.outputs.significant }}.dll
+      gitUrl: ${{ steps.url.outputs.gitUrl }}
+      tagsUrl: ${{ steps.url.outputs.tagsUrl }}
+      releasesUrl: ${{ steps.url.outputs.releasesUrl }}
 
     steps:
       - name: Debug
@@ -126,8 +138,16 @@ jobs:
           updateValue "defaultBranch" "default_branch"
           updateValue "homepage"
           updateValue "htmlUrl" "html_url"
-          updateValue "topics"
+          updateValue "gitUrl" "git_url"
+          updateValue "tagsUrl" "tags_url"
+          updateValue "releasesUrl" "releases_url"
           updateValue "description"
+          # Update Topics
+          jsonTopics=$(jq -r ".topics" <<< "$json")
+          bothTopicArrays="$topics $jsonTopics"
+          topics=$(jq -s -c 'add | unique' <<< $bothTopicArrays)
+          echo "Topics are $topics"
+          echo "topics=$topics" >> $GITHUB_OUTPUT
 
       - name: Get Branch
         id: branch
@@ -141,11 +161,14 @@ jobs:
           fi
           echo "currentBranch=${currentBranch}" >> $GITHUB_OUTPUT
 
-      - name: Homepage
+      - name: Links
         id: url
         env:
           homepage: ${{ steps.api.outputs.homepage }}
           htmlUrl: ${{ steps.api.outputs.htmlUrl }}
+          gitUrl: ${{ steps.api.outputs.gitUrl }}
+          tagsUrl: ${{ steps.api.outputs.tagsUrl }}
+          releasesUrl: ${{ steps.api.outputs.releasesUrl }}
         run: |
           if [ "$homepage" == "" ] ; then
             homepage="$htmlUrl"
@@ -154,3 +177,7 @@ jobs:
             homepage="https://stirlinglabs.com"
           fi
           echo "homepage=${homepage}" >> $GITHUB_OUTPUT
+          echo "gitUrl=${gitUrl}" >> $GITHUB_OUTPUT
+          echo "tagsUrl=${tagsUrl}" >> $GITHUB_OUTPUT
+          echo "releasesUrl=${releasesUrl}" >> $GITHUB_OUTPUT
+
