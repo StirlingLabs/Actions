@@ -1,0 +1,124 @@
+name: NuPkg Release Check
+
+on:
+  workflow_call:
+    inputs:
+      upstream:
+        description: Project owner/name (like GitHub repo URL)
+        type: string
+        required: false
+        default: ${{ github.repository }}
+      rids:
+        description: Runtime identifiers for the platforms to test in a simple list (space separated)
+        type: string
+        required: true
+      ignoreReleases:
+        description: Simple list of version numbers to ignore (space separated)
+        type: string
+        required: false
+        default:
+      nupkgName:
+        description: The package name to test (with the text 'RID' in place of the RID), e.g. StirlingLabs.project.RID.suffix
+        type: string
+        required: true
+
+    outputs:
+      releasesNeeded:
+        description: JSON array of the version numbers that do not have all of the required packages (i.e. one for each RID)
+        value: ${{ jobs.check.outputs.releasesNeeded }}
+      continue:
+        description: Boolean value; true if there are releases needed
+        value: ${{ jobs.check.outputs.continue }}
+      releasesUrl:
+        description: GitHub releases URL
+        value: ${{ jobs.check.outputs.releasesUrl }}
+      tagsUrl:
+        description: GitHub tags URL
+        value: ${{ jobs.check.outputs.tagsUrl }}
+      gitUrl:
+        description: GitHub project git URL
+        value: ${{ jobs.check.outputs.gitUrl }}
+      ridArray:
+        description: Runtime identifiers of the platforms tested in a JSON array
+        value: ${{ jobs.check.outputs.ridArray }}
+      rids:
+        description: Runtime identifiers of the platforms tested in a simple list (space separated) provided as input
+        value: ${{ inputs.rids }}
+      upstream:
+        description:  Project owner/name (like GitHub repo URL) provided as input
+        value: ${{ inputs.upstream }}
+
+jobs:
+  check:
+    name: Get Version
+    runs-on: ubuntu-22.04
+    outputs:
+      releasesNeeded: ${{ steps.test.outputs.releasesNeeded }}
+      continue: ${{ steps.test.outputs.continue }}
+      releasesUrl: ${{ steps.test.outputs.releasesUrl }}
+      tagsUrl: ${{ steps.test.outputs.tagsUrl }}
+      gitUrl: ${{ steps.test.outputs.gitUrl }}
+      rids: ${{ steps.test.outputs.rids }}
+      ridArray: ${{ steps.test.outputs.ridArray }}
+    steps:
+      - name: Check API
+        id: test
+        env:
+          upstream: ${{ inputs.upstream }}
+          rids: ${{ inputs.rids }}
+          ignoreReleases: ${{ inputs.ignoreReleases }}
+          nupkgName: ${{ inputs.nupkgName }}
+        run: |
+          # GitHub info
+          releasesUrl="https://api.github.com/repos/${upstream}/releases"
+          # Make these URLs available for other scripts
+          echo "releasesUrl=${releasesUrl}" >> $GITHUB_OUTPUT
+          echo "tagsUrl=https://api.github.com/repos/${upstream}/tags" >> $GITHUB_OUTPUT
+          echo "gitUrl=git://github.com/${upstream}.git" >> $GITHUB_OUTPUT
+          # Get release data
+          releasesJson=$(jq -c . <<< $(curl -s ${releasesUrl}))
+          releaseArray=$(jq -r ".[].tag_name" <<< $releasesJson)
+          echo "release list ${releaseArray}"
+          # NuGet info
+          declare -A packagesJson=()
+          for rid in $rids ; do
+            nupkg="${nupkgName/.RID./".${rid}."}"
+            packagesUrl="https://api.nuget.org/v3-flatcontainer/${nupkg}/index.json"
+            packageVersions[${rid//-/_}]=$(jq -c . <<< $(curl -s ${packagesUrl}))
+          done
+          #
+          # Get a list of upstream releases that do not have all of the required packages
+          continue="false"
+          releasesNeeded=""
+          space=""
+          for release in ${releaseArray[@]} ; do
+            # Skip exceptions due to upstream peculiarities (not in list and major version > 2)
+            digits=${release:1}
+            if [[ "$ignoreReleases" != *"$release"* ]] && [[ ${digits%%.*} -ge 2 ]] ; then
+              # If the package is valid, consider it
+              packageExists=""
+              for rid in $rids ; do
+                if [[ "$packageExists" != "false" ]] ; then
+                  jq -r ".versions|sort|to_entries[]|(.value)" <<< ${packageVersions[${rid//-/_}]} | sort -V | grep "${digits}" && packageExists="true" || packageExists="false"
+                fi
+              done
+              if [[ "$packageExists" == "false" ]] ; then
+                continue="true"
+                releasesNeeded="${releasesNeeded}${space}\"${release}\""
+                space=", "
+              fi
+            fi
+          done
+          if [ "$continue" == "true" ] ; then
+            ridArray="[ "
+            ridArrayComma=""
+            for rid in $rids ; do
+              ridArray="${ridArray}${ridArrayComma}\"${rid}\""
+              ridArrayComma=", "
+            done
+            ridArray="${ridArray} ]"
+          fi
+          echo "ridArray=$ridArray" >> $GITHUB_OUTPUT
+          echo "continue=$continue" >> $GITHUB_OUTPUT
+          echo "releases needed ${releasesNeeded}"
+          echo "releasesNeeded=[ ${releasesNeeded} ]" >> $GITHUB_OUTPUT
