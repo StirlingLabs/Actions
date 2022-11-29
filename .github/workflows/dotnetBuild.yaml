@@ -150,7 +150,6 @@ jobs:
 
       - name: Summary
         id: summary
-        needs: [ name, version ]
         env:
           release: ${{ inputs.release }}
           version: ${{ needs.version.outputs.text }}
