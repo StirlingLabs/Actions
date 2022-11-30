@@ -78,7 +78,7 @@ jobs:
           fi
           echo "numeric=$numericVersion" >> $GITHUB_OUTPUT
           echo "text=v$numericVersion" >> $GITHUB_OUTPUT
-          echo Core version is $numericVersion >> $GITHUB_OUTPUT
+          echo "Core version is $numericVersion"
         env:
           given: ${{ steps.given.outputs.v }}
           tag: ${{ steps.tag.outputs.v }}
