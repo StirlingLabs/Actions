@@ -58,14 +58,23 @@ on:
         description: Project topics in JSON array
         value: ${{ jobs.meta.outputs.topicsJson }}
       linuxName:
-        description: Name that would be given to a library for this project on Linux
+        description: Versioned filename that would be given to a library for this project on Linux
         value: ${{ jobs.meta.outputs.linuxName }}
       macName:
-        description: Name that would be given to a library for this project on MacOS
+        description: Versioned filename that would be given to a library for this project on MacOS
         value: ${{ jobs.meta.outputs.macName }}
       winName:
-        description: Filename that would be given to a DLL for this project on Windows
+        description: Versioned filename that would be given to a DLL for this project on Windows
         value: ${{ jobs.meta.outputs.winName }}
+      linuxBaseName:
+        description: Name that would be given to a library for this project on Linux without versioning
+        value: ${{ jobs.meta.outputs.linuxBaseName }}
+      macBaseName:
+        description: Name that would be given to a library for this project on MacOS without versioning
+        value: ${{ jobs.meta.outputs.macBaseName }}
+      winBaseName:
+        description: Filename that would be given to a DLL for this project on Windows without versioning
+        value: ${{ jobs.meta.outputs.winBaseName }}
       gitUrl:
         description: Project git URL
         value: ${{ jobs.meta.outputs.gitUrl }}
@@ -97,8 +106,11 @@ jobs:
       description: ${{ steps.api.outputs.description }}
       topics: ${{ steps.api.outputs.topics }}
       linuxName: lib${{ needs.name.outputs.core }}.so.${{ needs.version.outputs.significant }}
+      linuxBaseName: lib${{ needs.name.outputs.core }}.so
       macName: lib${{ needs.name.outputs.core }}.${{ needs.version.outputs.significant }}.dylib
+      macBaseName: lib${{ needs.name.outputs.core }}.dylib
       winName: ${{ needs.name.outputs.core }}-${{ needs.version.outputs.significant }}.dll
+      winBaseName: ${{ needs.name.outputs.core }}.dll
       gitUrl: ${{ steps.url.outputs.gitUrl }}
       tagsUrl: ${{ steps.url.outputs.tagsUrl }}
       releasesUrl: ${{ steps.url.outputs.releasesUrl }}
