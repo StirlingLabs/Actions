@@ -94,11 +94,11 @@ jobs:
     outputs:
       currentBranch: ${{ steps.branch.outputs.currentBranch }}
       homepage: ${{ steps.url.outputs.homepage }}
-      description: ${{ steps.meta.outputs.description }}
+      description: ${{ steps.api.outputs.description }}
       topics: ${{ steps.api.outputs.topics }}
-      linuxName: lib${{ needs.name.outputs.coreName }}.so.${{ needs.version.outputs.significant }}
-      macName: lib${{ needs.name.outputs.coreName }}.${{ needs.version.outputs.significant }}.dylib
-      winName: ${{ needs.name.outputs.coreName }}-${{ needs.version.outputs.significant }}.dll
+      linuxName: lib${{ needs.name.outputs.core }}.so.${{ needs.version.outputs.significant }}
+      macName: lib${{ needs.name.outputs.core }}.${{ needs.version.outputs.significant }}.dylib
+      winName: ${{ needs.name.outputs.core }}-${{ needs.version.outputs.significant }}.dll
       gitUrl: ${{ steps.url.outputs.gitUrl }}
       tagsUrl: ${{ steps.url.outputs.tagsUrl }}
       releasesUrl: ${{ steps.url.outputs.releasesUrl }}
