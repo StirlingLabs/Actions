@@ -133,6 +133,7 @@ jobs:
         run: |
           # init
           url="https://api.github.com/repos/${repo}"
+          echo "url is ${url}"
           echo "url=${url}" >> $GITHUB_OUTPUT
           json=""
           # Define function
@@ -144,6 +145,7 @@ jobs:
               [[ "$json" == "" ]] && json=$(curl -s $url);
               read "${_var}" <<< $(jq -r ".${_term}" <<< "$json")
             fi
+            echo "${_var} is ${!_var}"
             echo "${_var}=${!_var}" >> $GITHUB_OUTPUT
           }
           # Do work
@@ -156,9 +158,10 @@ jobs:
           updateValue "description"
           # Update Topics
           jsonTopics=$(jq -r ".topics" <<< "$json")
+          echo "Retrieved topics are $jsonTopics"
           bothTopicArrays="$topics $jsonTopics"
           topics=$(jq -s -c 'add | unique' <<< $bothTopicArrays)
-          echo "Topics are $topics"
+          echo "Final topics are $topics"
           echo "topics=$topics" >> $GITHUB_OUTPUT
 
       - name: Get Branch
