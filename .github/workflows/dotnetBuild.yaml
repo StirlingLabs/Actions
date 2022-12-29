@@ -156,11 +156,11 @@ jobs:
           project: ${{ needs.name.outputs.project }}
           event: ${{ github.event_name }}
         run: |
-          [[ "$release" == "true "]] && headline="Ready for release" || headline="Built & tested"
+          [[ "$release" == "true" ]] && headline="Ready for release" || headline="Built & tested"
           echo "### $headline on $RUNNER_OS" >> $GITHUB_STEP_SUMMARY
           echo "- Project built sucessfully" >> $GITHUB_STEP_SUMMARY
           echo "- Unit tests completed sucessfully" >> $GITHUB_STEP_SUMMARY
-          [[ "$release" == "true "]] && echo "- NuPkgs were tested successfully" >> $GITHUB_STEP_SUMMARY
+          [[ "$release" == "true" ]] && echo "- NuPkgs were tested successfully" >> $GITHUB_STEP_SUMMARY
           if [[ "$event" == "pull_request" ]] ; then
             echo "- Test coverage was updated in the PR" >> $GITHUB_STEP_SUMMARY
           elif [[ "$event" == "push" ]] ; then
