@@ -45,13 +45,6 @@ jobs:
         with:
           path: artifacts
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v0.1.12
-        with:
-          name: ${{ steps.name.outputs.release }}
-          files: |
-            artifacts/**
-
       - name: NuGet Auth
         uses: StirlingLabs/GithubNugetAuthAction@main
 
