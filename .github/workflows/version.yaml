@@ -37,7 +37,7 @@ jobs:
     name: Get Version
     runs-on: ubuntu-22.04
     outputs:
-      text: v${{ steps.version.outputs.text }}
+      text: ${{ steps.version.outputs.text }}
       numeric: ${{ steps.version.outputs.numeric }}
       major: ${{ steps.process.outputs.major }}
       significant: ${{ steps.process.outputs.significant }}
