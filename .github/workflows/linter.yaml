@@ -79,9 +79,9 @@ jobs:
       ################################
       # Linters
       ################################
-      - name: Lint Actions
-        if: github.repository == 'StirlingLabs/Actions' || inputs.language == 'actions'
-        uses: github/super-linter/slim@v4
+      - name: Lint This Repo
+        if: ${{ github.repository == 'StirlingLabs/Actions' }}
+        uses: github/super-linter@v4
         env:
           VALIDATE_ALL_CODEBASE: false
           DEFAULT_BRANCH: main
@@ -89,8 +89,27 @@ jobs:
           VALIDATE_GITHUB_ACTIONS: true
           SUPPRESS_POSSUM: true
 
+      - name: Lint Actions
+        if: ${{ inputs.language == 'actions' }}
+        uses: github/super-linter@v4
+        env:
+          VALIDATE_ALL_CODEBASE: false
+          DEFAULT_BRANCH: ${{ inputs.defaultBranch }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VALIDATE_GITHUB_ACTIONS: true
+          ACTIONS_RUNNER_DEBUG: ${{ inputs.debug }}
+          CREATE_LOG_FILE: ${{ inputs.log }}
+          LOG_FILE: ${{ inputs.logFile }}
+          LOG_LEVEL: ${{ inputs.logLevel }}
+          FILTER_REGEX_EXCLUDE: ${{ inputs.exclude }}
+          FILTER_REGEX_INCLUDE: ${{ inputs.include }}
+          IGNORE_GENERATED_FILES: ${{ inputs.ignoreGeneratedFiles }}
+          IGNORE_GITIGNORED_FILES: ${{ inputs.ignoreGitignoredFiles }}
+          LINTER_RULES_PATH: ${{ inputs.linterRules }}
+          SUPPRESS_POSSUM: true
+
       - name: Lint C#
-        if: inputs.language == 'csharp'
+        if: ${{ inputs.language == 'csharp' }}
         uses: github/super-linter@v4
         env:
           VALIDATE_ALL_CODEBASE: false
@@ -109,8 +128,8 @@ jobs:
           SUPPRESS_POSSUM: true
 
       - name: Lint C++
-        if: inputs.language == 'cpp'
-        uses: github/super-linter/slim@v4
+        if: ${{ inputs.language == 'cpp' }}
+        uses: github/super-linter@v4
         env:
           VALIDATE_ALL_CODEBASE: false
           DEFAULT_BRANCH: ${{ inputs.defaultBranch }}
@@ -128,8 +147,8 @@ jobs:
           SUPPRESS_POSSUM: true
 
       - name: Lint Go
-        if: inputs.language == 'go'
-        uses: github/super-linter/slim@v4
+        if: ${{ inputs.language == 'go' }}
+        uses: github/super-linter@v4
         env:
           VALIDATE_ALL_CODEBASE: false
           DEFAULT_BRANCH: ${{ inputs.defaultBranch }}
