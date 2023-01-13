@@ -1,0 +1,147 @@
+##################
+## Super Linter ##
+##################
+name: Lint
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+  workflow_call:
+    inputs:
+      debug:
+        description: Enaable additional information about the linter, versions, and additional output.
+        type: boolean
+        required: false
+        default: false
+      log:
+        description: Create a log file. You can set the log filename using the 'logFile' variable.
+        type: boolean
+        required: false
+        default: false
+      logFile:
+        description: The filename for outputting logs, defaults to 'linter.log'. All output is sent to the log file regardless of 'logLevel'.
+        type: string
+        required: false
+        default: 'linter.log'
+      logLevel:
+        description: How much output the script will generate to the console. One of ERROR, WARN, NOTICE, VERBOSE, DEBUG or TRACE.
+        type: string
+        required: false
+        default: 'VERBOSE'
+      linterRules:
+        description: Directory for all linter configuration rules.
+        type: string
+        required: false
+        default: '.github/linters'
+      defaultBranch:
+        description: Default branch of the repo, if not main.
+        type: string
+        required: false
+        default: 'main'
+      exclude:
+        description: Regular expression defining which files will be excluded from linting, e.g. `.*src/test.*` (default none).
+        type: string
+        required: false
+      include:
+        description: Regular expression defining which files will be processed by linters, e.g. `.*src/*` (default all).
+        type: string
+        required: false
+      ignoreGeneratedFiles:
+        description: If set to true, super-linter will ignore all the files with @generated marker but without @not-generated marker.
+        type: boolean
+        required: false
+        default: false
+      ignoreGitignoredFiles:
+        description: If set to true, super-linter will ignore all the files that are ignored by Git.
+        type: boolean
+        required: false
+        default: false
+      language:
+        description: Lint language (csharp, cpp, go, actions, etc)
+        type: string
+        required: true
+
+jobs:
+  build:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        with:
+          # Full git history is needed to get a proper
+          # list of changed files within `super-linter`
+          fetch-depth: 0
+
+      ################################
+      # Linters
+      ################################
+      - name: Lint Actions
+        if: github.repository == 'StirlingLabs/Actions' || inputs.language == 'actions'
+        uses: github/super-linter/slim@v4
+        env:
+          VALIDATE_ALL_CODEBASE: false
+          DEFAULT_BRANCH: main
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VALIDATE_GITHUB_ACTIONS: true
+          SUPPRESS_POSSUM: true
+
+      - name: Lint C#
+        if: inputs.language ==  == 'csharp'
+        uses: github/super-linter@v4
+        env:
+          VALIDATE_ALL_CODEBASE: false
+          DEFAULT_BRANCH: ${{ inputs.defaultBranch }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VALIDATE_CSHARP: true
+          ACTIONS_RUNNER_DEBUG: ${{ inputs.debug }}
+          CREATE_LOG_FILE: ${{ inputs.log }}
+          LOG_FILE: ${{ inputs.logFile }}
+          LOG_LEVEL: ${{ inputs.logLevel }}
+          FILTER_REGEX_EXCLUDE: ${{ inputs.exclude }}
+          FILTER_REGEX_INCLUDE: ${{ inputs.include }}
+          IGNORE_GENERATED_FILES: ${{ inputs.ignoreGeneratedFiles }}
+          IGNORE_GITIGNORED_FILES: ${{ inputs.ignoreGitignoredFiles }}
+          LINTER_RULES_PATH: ${{ inputs.linterRules }}
+          SUPPRESS_POSSUM: true
+
+      - name: Lint C++
+        if: inputs.language ==  == 'cpp'
+        uses: github/super-linter/slim@v4
+        env:
+          VALIDATE_ALL_CODEBASE: false
+          DEFAULT_BRANCH: ${{ inputs.defaultBranch }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VALIDATE_CPP: true
+          ACTIONS_RUNNER_DEBUG: ${{ inputs.debug }}
+          CREATE_LOG_FILE: ${{ inputs.log }}
+          LOG_FILE: ${{ inputs.logFile }}
+          LOG_LEVEL: ${{ inputs.logLevel }}
+          FILTER_REGEX_EXCLUDE: ${{ inputs.exclude }}
+          FILTER_REGEX_INCLUDE: ${{ inputs.include }}
+          IGNORE_GENERATED_FILES: ${{ inputs.ignoreGeneratedFiles }}
+          IGNORE_GITIGNORED_FILES: ${{ inputs.ignoreGitignoredFiles }}
+          LINTER_RULES_PATH: ${{ inputs.linterRules }}
+          SUPPRESS_POSSUM: true
+
+      - name: Lint Go
+        if: inputs.language ==  == 'go'
+        uses: github/super-linter/slim@v4
+        env:
+          VALIDATE_ALL_CODEBASE: false
+          DEFAULT_BRANCH: ${{ inputs.defaultBranch }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VALIDATE_GO: true
+          ACTIONS_RUNNER_DEBUG: ${{ inputs.debug }}
+          CREATE_LOG_FILE: ${{ inputs.log }}
+          LOG_FILE: ${{ inputs.logFile }}
+          LOG_LEVEL: ${{ inputs.logLevel }}
+          FILTER_REGEX_EXCLUDE: ${{ inputs.exclude }}
+          FILTER_REGEX_INCLUDE: ${{ inputs.include }}
+          IGNORE_GENERATED_FILES: ${{ inputs.ignoreGeneratedFiles }}
+          IGNORE_GITIGNORED_FILES: ${{ inputs.ignoreGitignoredFiles }}
+          LINTER_RULES_PATH: ${{ inputs.linterRules }}
+          SUPPRESS_POSSUM: true
