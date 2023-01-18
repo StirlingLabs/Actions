@@ -51,28 +51,78 @@ jobs:
         with:
           submodules: true
 
-      - name: Find Solution
+      - name: Find Projects
         id: solution
         run: |
-          if [ "$solution" == "" ] ; then
-            solutions=$(find . -name '*.sln')
-            count=0
+          function fail {
+            printf '%s\n' "Error: $1" >&2 ## Send message to stderr.
+            exit "${2-1}" ## Return a code specified by $2, or 1 by default.
+          }
 
-            for sln in "${solutions[@]}" ; do
-              count=$((count+1))
-              echo $count. $sln
-              if [ $count -eq 1 ] ; then
-                solution="$sln"
-              fi
-            done
-            if [ $count -gt 1 ] ; then
-              echo "Too many solutions ($count)!"
-              exit 1
-            fi
+          # START HERE
+          if [ "$solution" == "" ] ; then
+            echo "No solution file specified, finding..."
+            solution="$(find . -name '*.sln')"
+            count=$(echo "$solution" | wc -l | xargs)
+            [[ "$solution" == "" ]] && fail "No solution found!"
+            [[ $count -ne 1 ]] && fail "Error: Too many solutions ($count)!"
+          else
+            [[ "$solution" != *".sln" ]] && solution="${solution}.sln"
+            [[ ! -f "$solution" ]] && fail "Solution not found at $solution"
           fi
+          # Get list of projects, skip description and put on one line
+          projects=$(dotnet sln "$solution" list | sed -e 1,2d | xargs)
+          [[ "${projects,,}" == "could not find"* ]] && fail "No projects found!"
+          projectCount=$(echo "$projects" | wc -l | xargs)
+          echo "$projectCount project\(s\) found."
+          # shellcheck disable=2086
           echo "sln=$solution" >> $GITHUB_OUTPUT
+          # shellcheck disable=2086
+          echo "projects=$projects" >> $GITHUB_OUTPUT
         env:
           solution: ${{ inputs.solution }}
+
+      - name: Edit .csproj
+        id: csproj
+        run: |
+          # used as conditionalNode $nodename $nodevalue
+          function conditionalNode {
+            nodename=$1
+            nodevalue=$2
+            if [[ $(csprojcli node.exists -p "$item" -g PropertyGroup -n "$nodename") == "False" ]] ; then
+              echo "$nodename doesn't exist"
+              csprojcli node.insert -p "$item" -output "$item" -g PropertyGroup -n "$nodename" -v "$nodevalue" -allowoverwrite true
+              csprojcli attribute.insert -p "$item" -output "$item" -g PropertyGroup -n "$nodename" -a Condition  -v "'\$(CI)'!=''" -allowoverwrite true
+            else
+              value=$(csprojcli nodevalue.get -p "$item" -g PropertyGroup -n "$nodename")
+              condition=""
+              if [[ $(csprojcli attribute.exists -p "$item" -g PropertyGroup -n "$nodename" -a Condition) == "True" ]] ; then
+                condition=$(csprojcli attributevalue.get -p "$item" -g PropertyGroup -n "$nodename" -a Condition)
+                condition="while ${condition#*: }"
+              elif [[ $(csprojcli attribute.exists -p "$item" -g PropertyGroup -a Condition) == "True" ]] ; then
+                pgcText=$(csprojcli attribute.get -p "$item" -g PropertyGroup -a Condition)
+                pgCount=$(echo "$pgcText" | grep -c "PropertyGroup" )
+                cCount=$(echo "$pgcText" | grep -c "CsProjAttribute" )
+                condition=$(csprojcli attributevalue.get -p "$item" -g "$nodename" -a Condition)
+                condition="perhaps while ${condition#*: } \($cCount in $pgCount chance\)."
+              fi
+              echo "$nodename already exists in \"$item\": $value $condition"
+            fi
+          }
+
+          # START HERE
+          if ! dotnet tool install -g csprojcli ; then
+            echo "Problem installing csprojcli." && exit 1
+          fi
+          count=0
+          for item in "${projects[@]}" ; do
+            count=$((count+1))
+            echo "$count. $item"
+            conditionalNode PackageOutputPath "../artifacts"
+            conditionalNode GeneratePackageOnBuild true
+          done
+        env:
+          projects: ${{ steps.solution.outputs.projects }}
 
       - name: NuGet Auth
         uses: StirlingLabs/GithubNugetAuthAction@main
@@ -80,11 +130,12 @@ jobs:
       - name: Restore
         env:
           solution: ${{ steps.solution.outputs.sln }}
-        run: dotnet restore $solution
+        run: |
+          dotnet restore "$solution"
 
       - name: Build
         run: |
-          dotnet build $solution -c Release --no-restore
+          dotnet build "$solution" -c Release --no-restore
         env:
           solution: ${{ steps.solution.outputs.sln }}
           release: ${{ inputs.release }}
@@ -130,8 +181,10 @@ jobs:
 
       - name: Clean
         run: |
-          dotnet clean ${{ steps.solution.outputs.sln }}
-          rm -rf **/{bin,obj}/**
+          dotnet clean "$sln"
+          rm -rf ./**/{bin,obj}/**
+        env:
+          sln: ${{ steps.solution.outputs.sln }}
 
       - name: Test NuPkgs
         if: inputs.release == 'true'
@@ -141,8 +194,8 @@ jobs:
             dotnet build "$testProject" -c Release --no-restore -p:UseBuiltNuPkg=True
             dotnet test "$testProject" -c Release --no-restore --no-build -l:GitHubActions -p:UseBuiltNuPkg=True
           else
-            echo Tests not found at $testProject
-            ls *.Tests
+            echo "Tests not found at $testProject"
+            ls ./*.Tests
             exit 1
           fi
         env:
@@ -157,13 +210,18 @@ jobs:
           event: ${{ github.event_name }}
         run: |
           [[ "$release" == "true" ]] && headline="Ready for release" || headline="Built & tested"
+          # shellcheck disable=2086,2129
           echo "### $headline on $RUNNER_OS" >> $GITHUB_STEP_SUMMARY
+          # shellcheck disable=2086
           echo "- Project built sucessfully" >> $GITHUB_STEP_SUMMARY
+          # shellcheck disable=2086
           echo "- Unit tests completed sucessfully" >> $GITHUB_STEP_SUMMARY
+          # shellcheck disable=2086
           [[ "$release" == "true" ]] && echo "- NuPkgs were tested successfully" >> $GITHUB_STEP_SUMMARY
           if [[ "$event" == "pull_request" ]] ; then
+            # shellcheck disable=2086
             echo "- Test coverage was updated in the PR" >> $GITHUB_STEP_SUMMARY
           elif [[ "$event" == "push" ]] ; then
-            echo "- Test coverage was recorded in the `storage` branch" >> $GITHUB_STEP_SUMMARY
+            # shellcheck disable=2086
+            echo "- Test coverage was recorded in the \`storage\` branch" >> $GITHUB_STEP_SUMMARY
           fi
-          
