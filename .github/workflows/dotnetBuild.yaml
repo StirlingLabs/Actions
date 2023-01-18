@@ -70,59 +70,116 @@ jobs:
             [[ "$solution" != *".sln" ]] && solution="${solution}.sln"
             [[ ! -f "$solution" ]] && fail "Solution not found at $solution"
           fi
-          # Get list of projects, skip description and put on one line
-          projects=$(dotnet sln "$solution" list | sed -e 1,2d | xargs)
-          [[ "${projects,,}" == "could not find"* ]] && fail "No projects found!"
-          projectCount=$(echo "$projects" | wc -l | xargs)
-          echo "$projectCount project\(s\) found."
           # shellcheck disable=2086
           echo "sln=$solution" >> $GITHUB_OUTPUT
-          # shellcheck disable=2086
-          echo "projects=$projects" >> $GITHUB_OUTPUT
         env:
           solution: ${{ inputs.solution }}
 
       - name: Edit .csproj
         id: csproj
         run: |
-          # used as conditionalNode $nodename $nodevalue
+          # used as fail "message" returncode
+          function fail {
+            printf '%s\n' "Error: $1" >&2 ## Send message to stderr.
+            exit "${2-1}" ## Return a code specified by $2, or 1 by default.
+          }
+          # used as conditionalNode $file $nodename $nodevalue
           function conditionalNode {
-            nodename=$1
-            nodevalue=$2
-            if [[ $(csprojcli node.exists -p "$item" -g PropertyGroup -n "$nodename") == "False" ]] ; then
-              echo "$nodename doesn't exist"
-              csprojcli node.insert -p "$item" -output "$item" -g PropertyGroup -n "$nodename" -v "$nodevalue" -allowoverwrite true
-              csprojcli attribute.insert -p "$item" -output "$item" -g PropertyGroup -n "$nodename" -a Condition  -v "'\$(CI)'!=''" -allowoverwrite true
-            else
-              value=$(csprojcli nodevalue.get -p "$item" -g PropertyGroup -n "$nodename")
+            file="$1"
+            nodename="$2"
+            nodevalue="$3"
+            echo "In $file, ensuring $nodename is $nodevalue."
+            if [[ $(csprojcli group.exists -p "$file" -g PropertyGroup) == "True" && \
+                  $(csprojcli node.exists -p "$file" -g PropertyGroup -n "$nodename") == "True" && \
+                  $(csprojcli nodevalue.exists -p "$file" -g PropertyGroup -n "$nodename") == "True" \
+                ]] ; then
+              echo "$nodename exists and has a value"
+              value=$(csprojcli nodevalue.get -p "$file" -g PropertyGroup -n "$nodename")
+              echo "$nodename == $value"
               condition=""
-              if [[ $(csprojcli attribute.exists -p "$item" -g PropertyGroup -n "$nodename" -a Condition) == "True" ]] ; then
-                condition=$(csprojcli attributevalue.get -p "$item" -g PropertyGroup -n "$nodename" -a Condition)
+              if [[ $(csprojcli attribute.exists -p "$file" -g PropertyGroup -n "$nodename" -a Condition) == "True" && \
+                    $(csprojcli attributevalue.exists -p "$file" -g PropertyGroup -n "$nodename" -a Condition) == "True" \
+                  ]] ; then
+                echo "Node $nodename has attribute Condition with a value"
+                condition=$(csprojcli attributevalue.get -p "$file" -g PropertyGroup -n "$nodename" -a Condition)
+                echo "_Condition_ == _${condition}_"
                 condition="while ${condition#*: }"
-              elif [[ $(csprojcli attribute.exists -p "$item" -g PropertyGroup -a Condition) == "True" ]] ; then
-                pgcText=$(csprojcli attribute.get -p "$item" -g PropertyGroup -a Condition)
+              elif [[ $(csprojcli attribute.exists -p "$file" -g PropertyGroup -a Condition) == "True" ]] ; then
+                echo "Group has attribute Condition"
+                pgcText=$(csprojcli attribute.get -p "$file" -g PropertyGroup -a Condition)
                 pgCount=$(echo "$pgcText" | grep -c "PropertyGroup" )
                 cCount=$(echo "$pgcText" | grep -c "CsProjAttribute" )
-                condition=$(csprojcli attributevalue.get -p "$item" -g "$nodename" -a Condition)
-                condition="perhaps while ${condition#*: } \($cCount in $pgCount chance\)."
+                if [[ $(csprojcli attributevalue.exists -p "$file" -g PropertyGroup -a Condition) == "True" ]] ; then
+                  condition=$(csprojcli attributevalue.get -p "$file" -g PropertyGroup -a Condition)
+                  condition="perhaps while ${condition#*: } \($cCount in $pgCount chance\)."
+                else
+                  condition="no conditional value found."
+                fi
+                echo "Condition is _${condition}_"
+              else
+                echo "Neither Group or Node has Condition attribute."
               fi
-              echo "$nodename already exists in \"$item\": $value $condition"
+              echo "$nodename already exists in \"$file\": $value $condition"
+            else
+              echo "$nodename doesn't exist"
+              csprojcli node.insert -p "$file" -output "$file" -g PropertyGroup -n "$nodename" -v "$nodevalue" -allowoverwrite true
+              csprojcli attribute.insert -p "$file" -output "$file" -g PropertyGroup -n "$nodename" -a Condition  -v "'\$(CI)'!=''" -allowoverwrite true
+              echo "$nodename inserted with value $nodevalue"
             fi
           }
 
           # START HERE
-          if ! dotnet tool install -g csprojcli ; then
-            echo "Problem installing csprojcli." && exit 1
+          # Install csprojcli -- which cannot be done in a dir with multiple projects
+          [[ -f "$emptyDir" ]] && fail "There is a file called $emptyDir !!"
+          mkdir -p "$emptyDir"
+          cd "$emptyDir" || fail "Could not change into $emptyDir"
+          dotnet tool install -g csprojcli || fail "Problem installing csprojcli." $?
+          cd ..
+          rmdir "$emptyDir"
+          echo "Getting list of projects from $solution"
+          projects=$(dotnet sln "$solution" list | sed -e 1,2d)
+          [[ "$projects" == "" ]] && fail "No output from solution."
+          projectsLowercase=$(echo "$projects" | tr '[:upper:]' '[:lower:]')
+          [[ "$projectsLowercase" != *".csproj" ]] && fail "No C# projects found!"
+          projectCount=$(echo "$projects" | wc -l | xargs)
+          echo "$projectCount projects found."
+          # shellcheck disable=2086
+          echo "projects=$projects" >> $GITHUB_OUTPUT
+          # MacOS has old bash
+          if type -t readarray >/dev/null; then
+            readarray -t projectArray <<< "$projects"
+          else
+            IFS=$'\n' read -r -d projectArray < <(printf '%s\0' "$projects")
           fi
+          # Process the projects
           count=0
-          for item in "${projects[@]}" ; do
+          for item in "${projectArray[@]}" ; do
             count=$((count+1))
             echo "$count. $item"
-            conditionalNode PackageOutputPath "../artifacts"
-            conditionalNode GeneratePackageOnBuild true
+            if [[ "$item" == *".Test"* ]] ; then
+              echo "> $item idendified as Test Project."
+              if [[ $(csprojcli group.exists -p "$item" -g ItemGroup) == "True" && \
+                    $(csprojcli node.exists -p "$item" -g ItemGroup -n PackageReference) == "True" && \
+                    $(csprojcli attribute.exists -p "$item" -g ItemGroup -n PackageReference -a Include) == "True" && \
+                    $(csprojcli attributevalue.exists -p "$item" -g ItemGroup -n PackageReference -a Include -v "GitHubActionsTestLogger") == "True" \
+                    ]] ; then
+                echo "GitHubActionsTestLogger found."
+              else
+                echo "GitHubActionsTestLogger not found, inserting"
+                csprojcli attribute.insert -p "$item" -output "$item" -g ItemGroup -n PackageReference -a Include,Version -v "GitHubActionsTestLogger,*" -allowoverwrite true
+                echo "GitHubActionsTestLogger inserted"
+              fi
+            else
+              echo "> $item project processing."
+              conditionalNode "$item" PackageOutputPath "../artifacts"
+              conditionalNode "$item" GeneratePackageOnBuild true
+              echo "$item project processed."
+            fi
           done
+          echo "Done."
         env:
-          projects: ${{ steps.solution.outputs.projects }}
+          solution: ${{ steps.solution.outputs.sln }}
+          emptyDir: "this_is_an_empty_dir_but_it_wont_be_empty_long"
 
       - name: NuGet Auth
         uses: StirlingLabs/GithubNugetAuthAction@main
