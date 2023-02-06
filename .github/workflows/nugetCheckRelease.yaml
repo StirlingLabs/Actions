@@ -50,7 +50,7 @@ on:
 
 jobs:
   check:
-    name: Get Version
+    name: Status
     runs-on: ubuntu-22.04
     outputs:
       releasesNeeded: ${{ steps.test.outputs.releasesNeeded }}
@@ -72,34 +72,45 @@ jobs:
           # GitHub info
           releasesUrl="https://api.github.com/repos/${upstream}/releases"
           # Make these URLs available for other scripts
-          echo "releasesUrl=${releasesUrl}" >> $GITHUB_OUTPUT
-          echo "tagsUrl=https://api.github.com/repos/${upstream}/tags" >> $GITHUB_OUTPUT
-          echo "gitUrl=git://github.com/${upstream}.git" >> $GITHUB_OUTPUT
+          # shellcheck disable=2129
+          echo "releasesUrl=${releasesUrl}" >> "$GITHUB_OUTPUT"
+          echo "tagsUrl=https://api.github.com/repos/${upstream}/tags" >> "$GITHUB_OUTPUT"
+          echo "gitUrl=git://github.com/${upstream}.git" >> "$GITHUB_OUTPUT"
           # Get release data
-          releasesJson=$(jq -c . <<< $(curl -s ${releasesUrl}))
-          releaseArray=$(jq -r ".[].tag_name" <<< $releasesJson)
-          echo "release list ${releaseArray}"
+          releasesJson="$(jq -c . <<< "$(curl -s "${releasesUrl}")")"
+          releaseList="$(jq -r ".[].tag_name" <<< "$releasesJson")"
+          echo -e "release list:\n${releaseList}\n"
           # NuGet info
-          declare -A packagesJson=()
+          declare -A packageList
           for rid in $rids ; do
             nupkg="${nupkgName/.RID./".${rid}."}"
             packagesUrl="https://api.nuget.org/v3-flatcontainer/${nupkg}/index.json"
-            packageVersions[${rid//-/_}]=$(jq -c . <<< $(curl -s ${packagesUrl}))
+            ridPackageList="$(jq -r ".versions|sort|to_entries[]|(.value)" <<< "$(curl -s "${packagesUrl}")")"
+            platform="${rid//-/_}"
+            packageList[$platform]="$ridPackageList"
+            echo "${rid}/${rid//-/_}: $(xargs <<< "$ridPackageList")"
           done
           #
           # Get a list of upstream releases that do not have all of the required packages
-          continue="false"
+          continue=""
           releasesNeeded=""
           space=""
-          for release in ${releaseArray[@]} ; do
+          mapfile -t releaseArray <<< "$releaseList"
+          for release in "${releaseArray[@]}" ; do
+            echo "Checking $release"
             # Skip exceptions due to upstream peculiarities (not in list and major version > 2)
             digits=${release:1}
             if [[ "$ignoreReleases" != *"$release"* ]] && [[ ${digits%%.*} -ge 2 ]] ; then
               # If the package is valid, consider it
               packageExists=""
+              echo "$release testing $rids"
               for rid in $rids ; do
                 if [[ "$packageExists" != "false" ]] ; then
-                  jq -r ".versions|sort|to_entries[]|(.value)" <<< ${packageVersions[${rid//-/_}]} | sort -V | grep "${digits}" && packageExists="true" || packageExists="false"
+                  platform="${rid//-/_}"
+                  ridPackageList="${packageList[$platform]}"
+                  [[ "$ridPackageList" == *"${digits}"* ]] && packageExists="true" || packageExists="false"
+                  [[ "$packageExists" == "true" ]] && exists="exists" || exists="NOT FOUND"
+                  echo "${platform} v$digits $exists in $(xargs <<< "$ridPackageList")"
                 fi
               done
               if [[ "$packageExists" == "false" ]] ; then
@@ -109,6 +120,7 @@ jobs:
               fi
             fi
           done
+          echo "Continue... $continue"
           if [ "$continue" == "true" ] ; then
             ridArray="[ "
             ridArrayComma=""
@@ -118,7 +130,7 @@ jobs:
             done
             ridArray="${ridArray} ]"
           fi
-          echo "ridArray=$ridArray" >> $GITHUB_OUTPUT
-          echo "continue=$continue" >> $GITHUB_OUTPUT
-          echo "releases needed ${releasesNeeded}"
-          echo "releasesNeeded=[ ${releasesNeeded} ]" >> $GITHUB_OUTPUT
+          echo "ridArray=$ridArray" >> "$GITHUB_OUTPUT"
+          echo "continue=$continue" >> "$GITHUB_OUTPUT"
+          echo -e "releases needed:\n${releasesNeeded}"
+          echo "releasesNeeded=[ ${releasesNeeded} ]" >> "$GITHUB_OUTPUT"
