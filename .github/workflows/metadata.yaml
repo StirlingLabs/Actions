@@ -48,6 +48,9 @@ on:
       currentBranch:
         description: Name of the current branch of the project
         value: ${{ jobs.meta.outputs.currentBranch }}
+      defaultBranch:
+        description: Name of the default branch of the project
+        value: ${{ jobs.meta.outputs.defaultBranch }}
       homepage:
         description: Project homepage
         value: ${{ jobs.meta.outputs.homepage }}
@@ -102,6 +105,7 @@ jobs:
     needs: [ name, version ]
     outputs:
       currentBranch: ${{ steps.branch.outputs.currentBranch }}
+      defaultBranch: ${{ steps.api.outputs.defaultBranch }}
       homepage: ${{ steps.url.outputs.homepage }}
       description: ${{ steps.api.outputs.description }}
       topics: ${{ steps.api.outputs.topics }}
