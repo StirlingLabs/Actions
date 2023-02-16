@@ -64,6 +64,7 @@ jobs:
     outputs:
       upstream: ${{ inputs.upstream }}
       releasesNeeded: ${{ steps.test.outputs.releasesNeeded }}
+      releasePrefix: ${{ inputs.releasePrefix }}
       continue: ${{ steps.test.outputs.continue }}
       releasesUrl: ${{ steps.test.outputs.releasesUrl }}
       tagsUrl: ${{ steps.test.outputs.tagsUrl }}
@@ -95,13 +96,26 @@ jobs:
           echo -e "release list:\n${releaseList}\n"
           # NuGet info
           declare -A packageList
+          count=0
           for rid in $rids ; do
+            echo "${count}. Checking $rid"
             nupkg="${nupkgName/.RID./".${rid}."}"
             packagesUrl="https://api.nuget.org/v3-flatcontainer/${nupkg}/index.json"
-            ridPackageList="$(jq -r ".versions|sort|to_entries[]|(.value)" <<< "$(curl -s "${packagesUrl}")")"
+            packagesRaw="$(curl -s "${packagesUrl}")"
+            if [[ "$packagesRaw" == *"BlobNotFound"* ]] ; then
+              echo "No packages found for $rid"
+              ridPackageList=""
+            elif [[ "$packagesRaw" == *"Error"* ]] ; then
+              echo -e "Problem while processing ${rid} at ${packagesUrl}:\n${packagesRaw}\n"
+              exit 1
+            else
+              ridPackageList="$(jq -r ".versions|sort|to_entries[]|(.value)" <<< "$packagesRaw")"
+              echo "ridPackageList=$ridPackageList"
+            fi
             platform="${rid//-/_}"
             packageList[$platform]="$ridPackageList"
             echo "${rid}/${rid//-/_}: $(xargs <<< "$ridPackageList")"
+            count=$((count+1))
           done
           #
           # Get a list of upstream releases that do not have all of the required packages
@@ -110,10 +124,10 @@ jobs:
           space=""
           mapfile -t releaseArray <<< "$releaseList"
           for release in "${releaseArray[@]}" ; do
-            echo "Checking $release"
             # Skip exceptions due to upstream peculiarities (not in list and major version > 2)
             digits=${release#"$releasePrefix"}
-            if [[ "$ignoreReleases" != *"$digits"* ]] && [[ ${digits%%.*} -ge 2 ]] ; then
+            echo "- Checking ${release} (${digits})"
+            if [[ "$ignoreReleases" != *"$digits"* ]] ; then
               # If the package is valid, consider it
               packageExists=""
               echo "v$digits testing $rids"
@@ -123,7 +137,7 @@ jobs:
                   ridPackageList="${packageList[$platform]}"
                   [[ "$ridPackageList" == *"${digits}"* ]] && packageExists="true" || packageExists="false"
                   [[ "$packageExists" == "true" ]] && exists="exists" || exists="NOT FOUND"
-                  echo "${platform} v$digits $exists in $(xargs <<< "$ridPackageList")"
+                  echo -e "${platform} v$digits $exists in \"$(xargs <<< "$ridPackageList")\""
                 fi
               done
               if [[ "$packageExists" == "false" ]] ; then
@@ -141,9 +155,9 @@ jobs:
             for rid in $rids ; do
               ridArray="${ridArray}${comma}\"${rid}\""
               case "$rid" in
-                "win"*) platformArray="${platformArray}${comma}windows-latest" ;;
-                "linux"*) platformArray="${platformArray}${comma}ubuntu-latest" ;;
-                "osx"*) platformArray="${platformArray}${comma}macos-latest" ;;
+                "win"*) platformArray="${platformArray}${comma}\"windows-latest\"" ;;
+                "linux"*) platformArray="${platformArray}${comma}\"ubuntu-latest\"" ;;
+                "osx"*) platformArray="${platformArray}${comma}\"macos-latest\"" ;;
                 *) echo "Unknown RID $rid." && exit 1 ;;
               esac
               comma=", "
@@ -151,6 +165,7 @@ jobs:
             ridArray="${ridArray} ]"
             platformArray="${platformArray} ]"
           fi
+          echo -e "ridArray:\n${ridArray}\nplatformArray:\n${platformArray}\n"
           #shellcheck disable=2129
           echo "ridArray=$ridArray" >> "$GITHUB_OUTPUT"
           echo "platformArray=$platformArray" >> "$GITHUB_OUTPUT"
