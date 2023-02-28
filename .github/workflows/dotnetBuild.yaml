@@ -3,43 +3,42 @@ name: .Net Build
 on:
   workflow_call:
     inputs:
+      project:
+        description: Overall project name
+        type: string
+        required: false
       solution:
         description: Solution file name
         type: string
         required: false
-      project:
-        description: Project name
-        type: string
-        required: false
+      test:
+        description: Run tests on this project?
+        type: boolean
+        default: true
       release:
         description: Building for release?
         type: boolean
         default: false
 
 jobs:
-  name:
-    name: Determine Name
-    uses: ./.github/workflows/name.yaml
+  meta:
+    name: Get Metadata
+    uses: ./.github/workflows/metadata.yaml
     with:
       coreName: ${{ inputs.project }}
-
-  version:
-    name: Determine Version
-    uses: ./.github/workflows/version.yaml
-    with:
-      strict: ${{ inputs.release }}
+      strictVersion: ${{ inputs.release }}
 
   build:
     name: .Net Build
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-          include:
-            - os: ubuntu-22.04
-            - os: macos-12
-            - os: windows-2022
+        include:
+          - os: ubuntu-22.04
+          - os: macos-12
+          - os: windows-2022
       fail-fast: true
-    needs: [ name, version ]
+    needs: [ meta ]
     defaults:
       run:
         shell: bash
@@ -51,168 +50,52 @@ jobs:
         with:
           submodules: true
 
-      - name: Find Projects
-        id: solution
-        run: |
-          function fail {
-            printf '%s\n' "Error: $1" >&2 ## Send message to stderr.
-            exit "${2-1}" ## Return a code specified by $2, or 1 by default.
-          }
-
-          # START HERE
-          if [ "$solution" == "" ] ; then
-            echo "No solution file specified, finding..."
-            solution="$(find . -name '*.sln')"
-            count=$(echo "$solution" | wc -l | xargs)
-            [[ "$solution" == "" ]] && fail "No solution found!"
-            [[ $count -ne 1 ]] && fail "Error: Too many solutions ($count)!"
-          else
-            [[ "$solution" != *".sln" ]] && solution="${solution}.sln"
-            [[ ! -f "$solution" ]] && fail "Solution not found at $solution"
-          fi
-          # shellcheck disable=2086
-          echo "sln=$solution" >> $GITHUB_OUTPUT
-        env:
+      - name: Preflight
+        id: preflight
+        if: runner.os == 'Linux'
+        uses: StirlingLabs/PreflightDotnetAction@main
+        with:
+          coreName: ${{ needs.meta.outputs.coreName }}
           solution: ${{ inputs.solution }}
+          gitUrl: ${{ needs.meta.outputs.gitUrl }}
+          homepage: ${{ needs.meta.outputs.homepage }}
+          defaultBranch: ${{ needs.meta.outputs.defaultBranch }}
 
-      - name: Edit .csproj
-        id: csproj
-        run: |
-          # used as fail "message" returncode
-          function fail {
-            printf '%s\n' "Error: $1" >&2 ## Send message to stderr.
-            exit "${2-1}" ## Return a code specified by $2, or 1 by default.
-          }
-          # used as conditionalNode $file $nodename $nodevalue
-          function conditionalNode {
-            file="$1"
-            nodename="$2"
-            nodevalue="$3"
-            echo "In $file, ensuring $nodename is $nodevalue."
-            if [[ $(csprojcli group.exists -p "$file" -g PropertyGroup) == "True" && \
-                  $(csprojcli node.exists -p "$file" -g PropertyGroup -n "$nodename") == "True" && \
-                  $(csprojcli nodevalue.exists -p "$file" -g PropertyGroup -n "$nodename") == "True" \
-                ]] ; then
-              echo "$nodename exists and has a value"
-              value=$(csprojcli nodevalue.get -p "$file" -g PropertyGroup -n "$nodename")
-              echo "$nodename == $value"
-              condition=""
-              if [[ $(csprojcli attribute.exists -p "$file" -g PropertyGroup -n "$nodename" -a Condition) == "True" && \
-                    $(csprojcli attributevalue.exists -p "$file" -g PropertyGroup -n "$nodename" -a Condition) == "True" \
-                  ]] ; then
-                echo "Node $nodename has attribute Condition with a value"
-                condition=$(csprojcli attributevalue.get -p "$file" -g PropertyGroup -n "$nodename" -a Condition)
-                echo "_Condition_ == _${condition}_"
-                condition="while ${condition#*: }"
-              elif [[ $(csprojcli attribute.exists -p "$file" -g PropertyGroup -a Condition) == "True" ]] ; then
-                echo "Group has attribute Condition"
-                pgcText=$(csprojcli attribute.get -p "$file" -g PropertyGroup -a Condition)
-                pgCount=$(echo "$pgcText" | grep -c "PropertyGroup" )
-                cCount=$(echo "$pgcText" | grep -c "CsProjAttribute" )
-                if [[ $(csprojcli attributevalue.exists -p "$file" -g PropertyGroup -a Condition) == "True" ]] ; then
-                  condition=$(csprojcli attributevalue.get -p "$file" -g PropertyGroup -a Condition)
-                  condition="perhaps while ${condition#*: } \($cCount in $pgCount chance\)."
-                else
-                  condition="no conditional value found."
-                fi
-                echo "Condition is _${condition}_"
-              else
-                echo "Neither Group or Node has Condition attribute."
-              fi
-              echo "$nodename already exists in \"$file\": $value $condition"
-            else
-              echo "$nodename doesn't exist"
-              csprojcli node.insert -p "$file" -output "$file" -g PropertyGroup -n "$nodename" -v "$nodevalue" -allowoverwrite true
-              csprojcli attribute.insert -p "$file" -output "$file" -g PropertyGroup -n "$nodename" -a Condition  -v "'\$(CI)'!=''" -allowoverwrite true
-              echo "$nodename inserted with value $nodevalue"
-            fi
-          }
-
-          # START HERE
-          # Install csprojcli -- which cannot be done in a dir with multiple projects
-          [[ -f "$emptyDir" ]] && fail "There is a file called $emptyDir !!"
-          mkdir -p "$emptyDir"
-          cd "$emptyDir" || fail "Could not change into $emptyDir"
-          dotnet tool install -g csprojcli || fail "Problem installing csprojcli." $?
-          cd ..
-          rmdir "$emptyDir"
-          echo "Getting list of projects from $solution"
-          projects=$(dotnet sln "$solution" list | sed -e 1,2d)
-          [[ "$projects" == "" ]] && fail "No output from solution."
-          projectsLowercase=$(echo "$projects" | tr '[:upper:]' '[:lower:]')
-          [[ "$projectsLowercase" != *".csproj" ]] && fail "No C# projects found!"
-          projectCount=$(echo "$projects" | wc -l | xargs)
-          echo "$projectCount projects found."
-          # shellcheck disable=2086
-          echo "projects=$projects" >> $GITHUB_OUTPUT
-          # MacOS has old bash
-          if type -t readarray >/dev/null; then
-            readarray -t projectArray <<< "$projects"
-          else
-            IFS=$'\n' read -r -d projectArray < <(printf '%s\0' "$projects")
-          fi
-          # Process the projects
-          count=0
-          for item in "${projectArray[@]}" ; do
-            count=$((count+1))
-            echo "$count. $item"
-            if [[ "$item" == *".Test"* ]] ; then
-              echo "> $item idendified as Test Project."
-              if [[ $(csprojcli group.exists -p "$item" -g ItemGroup) == "True" && \
-                    $(csprojcli node.exists -p "$item" -g ItemGroup -n PackageReference) == "True" && \
-                    $(csprojcli attribute.exists -p "$item" -g ItemGroup -n PackageReference -a Include) == "True" && \
-                    $(csprojcli attributevalue.exists -p "$item" -g ItemGroup -n PackageReference -a Include -v "GitHubActionsTestLogger") == "True" \
-                    ]] ; then
-                echo "GitHubActionsTestLogger found."
-              else
-                echo "GitHubActionsTestLogger not found, inserting"
-                csprojcli attribute.insert -p "$item" -output "$item" -g ItemGroup -n PackageReference -a Include,Version -v "GitHubActionsTestLogger,*" -allowoverwrite true
-                echo "GitHubActionsTestLogger inserted"
-              fi
-            else
-              echo "> $item project processing."
-              conditionalNode "$item" PackageOutputPath "../artifacts"
-              conditionalNode "$item" GeneratePackageOnBuild true
-              echo "$item project processed."
-            fi
-          done
-          echo "Done."
-        env:
-          solution: ${{ steps.solution.outputs.sln }}
-          emptyDir: "this_is_an_empty_dir_but_it_wont_be_empty_long"
 
       - name: NuGet Auth
         uses: StirlingLabs/GithubNugetAuthAction@main
 
       - name: Restore
         env:
-          solution: ${{ steps.solution.outputs.sln }}
+          solution: ${{ steps.preflight.outputs.solution }}
         run: |
           dotnet restore "$solution"
 
       - name: Build
         run: |
-          dotnet build "$solution" -c Release --no-restore
+          dotnet build "$solution" --configuration Release --no-restore
         env:
-          solution: ${{ steps.solution.outputs.sln }}
+          solution: ${{ steps.preflight.outputs.solution }}
           release: ${{ inputs.release }}
-          version: ${{ needs.version.outputs.numeric }}
+          version: ${{ needs.meta.outputs.numericVersion }}
           runNumber: ${{ github.run_id }}
 
       - name: Test
-        run: dotnet test ${{ steps.solution.outputs.sln }} --no-build -c Release -l:GitHubActions
+        if: inputs.test == 'true'
+        run: dotnet test ${{ steps.preflight.outputs.solution }} --no-build --no-restore --configuration Release --logger GitHubActions
 
       - name: Upload Artifacts
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ needs.name.outputs.project }}
+          name: ${{ needs.meta.outputs.project }}
           path: |
             artifacts/*.nupkg
           if-no-files-found: error
 
       - name: Save coverage to PR
         if: |
+          inputs.test == 'true' &&
           github.event_name == 'pull_request' &&
           runner.os == 'Linux'
         uses: StirlingLabs/PROutputAction@v1.0.1
@@ -241,44 +124,44 @@ jobs:
           dotnet clean "$sln"
           rm -rf ./**/{bin,obj}/**
         env:
-          sln: ${{ steps.solution.outputs.sln }}
+          sln: ${{ steps.preflight.outputs.solution }}
 
       - name: Test NuPkgs
-        if: inputs.release == 'true'
+        if: inputs.test == 'true' && inputs.release == 'true'
         run: |
           if [ -d "$testProject" ]; then
             dotnet restore "$testProject" -p:Configuration=Release -p:UseBuiltNuPkg=True
-            dotnet build "$testProject" -c Release --no-restore -p:UseBuiltNuPkg=True
-            dotnet test "$testProject" -c Release --no-restore --no-build -l:GitHubActions -p:UseBuiltNuPkg=True
+            dotnet build "$testProject" --configuration Release --no-restore -p:UseBuiltNuPkg=True
+            dotnet test "$testProject" --configuration Release --no-restore --no-build --logger GitHubActions -p:UseBuiltNuPkg=True
           else
             echo "Tests not found at $testProject"
             ls ./*.Tests
             exit 1
           fi
         env:
-          testProject: ${{ needs.name.outputs.project }}.Tests
+          testProject: ${{ needs.meta.outputs.project }}.Tests
 
       - name: Summary
         id: summary
         env:
           release: ${{ inputs.release }}
-          version: ${{ needs.version.outputs.text }}
-          project: ${{ needs.name.outputs.project }}
+          test: ${{ inputs.test }}
+          version: ${{ needs.meta.outputs.textVersion }}
+          project: ${{ needs.meta.outputs.project }}
           event: ${{ github.event_name }}
         run: |
-          [[ "$release" == "true" ]] && headline="Ready for release" || headline="Built & tested"
+          [[ "$release" == "true" ]] && headline="Ready for Release" || headline="Built & tested"
           # shellcheck disable=2086,2129
-          echo "### $headline on $RUNNER_OS" >> $GITHUB_STEP_SUMMARY
-          # shellcheck disable=2086
-          echo "- Project built sucessfully" >> $GITHUB_STEP_SUMMARY
-          # shellcheck disable=2086
-          echo "- Unit tests completed sucessfully" >> $GITHUB_STEP_SUMMARY
-          # shellcheck disable=2086
-          [[ "$release" == "true" ]] && echo "- NuPkgs were tested successfully" >> $GITHUB_STEP_SUMMARY
+          echo "### $headline on $RUNNER_OS" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Project built sucessfully" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$test" == "true" ]] ; then
+            echo "- Unit tests completed sucessfully" >> "$GITHUB_STEP_SUMMARY"
+            [[ "$release" == "true" ]] && echo "- NuPkgs were tested successfully" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- Unit tests were skipped" >> "$GITHUB_STEP_SUMMARY"
+          fi
           if [[ "$event" == "pull_request" ]] ; then
-            # shellcheck disable=2086
-            echo "- Test coverage was updated in the PR" >> $GITHUB_STEP_SUMMARY
+            echo "- Test coverage was updated in the PR" >> "$GITHUB_STEP_SUMMARY"
           elif [[ "$event" == "push" ]] ; then
-            # shellcheck disable=2086
-            echo "- Test coverage was recorded in the \`storage\` branch" >> $GITHUB_STEP_SUMMARY
+            echo "- Test coverage was recorded in the \`storage\` branch" >> "$GITHUB_STEP_SUMMARY"
           fi
