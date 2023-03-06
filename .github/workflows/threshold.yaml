@@ -61,10 +61,10 @@ jobs:
           (steps.released_check.outcome == 'skipped' || steps.released_check.outputs.process != 'true')
         uses: fkirc/skip-duplicate-actions@v5
         with:
-          skip_after_successful_duplicate: 'true'
+          skip_after_successful_duplicate: true
           paths_ignore: '["**/README.md", ".idea/**", ".editorconfig", ".git*", "docs/**", ".github/**", "**/Doxyfile.in"]'
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          concurrent_skipping: never
+          concurrent_skipping: same_content
           cancel_others: true
 
       - name: Skipped Checks Check
