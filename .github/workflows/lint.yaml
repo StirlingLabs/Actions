@@ -90,7 +90,7 @@ jobs:
           SUPPRESS_POSSUM: true
 
       - name: Lint Actions
-        if: ${{ inputs.language == 'actions' }}
+        if: ${{ inputs.language == 'actions' }} || ${{ inputs.language == 'github-actions' }}
         uses: github/super-linter@v4
         env:
           VALIDATE_ALL_CODEBASE: false
@@ -109,7 +109,7 @@ jobs:
           SUPPRESS_POSSUM: true
 
       - name: Lint C#
-        if: ${{ inputs.language == 'csharp' }}
+        if: ${{ inputs.language == 'csharp' }} || ${{ inputs.language == 'c#' }}
         uses: github/super-linter@v4
         env:
           VALIDATE_ALL_CODEBASE: false
@@ -128,7 +128,7 @@ jobs:
           SUPPRESS_POSSUM: true
 
       - name: Lint C++
-        if: ${{ inputs.language == 'cpp' }}
+        if: ${{ inputs.language == 'cpp' }} || ${{ inputs.language == 'c++' }}
         uses: github/super-linter@v4
         env:
           VALIDATE_ALL_CODEBASE: false
