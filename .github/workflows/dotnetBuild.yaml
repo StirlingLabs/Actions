@@ -19,6 +19,10 @@ on:
         description: Building for release?
         type: boolean
         default: false
+    outputs:
+      fail:
+        description: Was the build not fully successful?
+        value: ${{ jobs.build.outputs.fail }}
 
 jobs:
   meta:
@@ -42,6 +46,8 @@ jobs:
     defaults:
       run:
         shell: bash
+    outputs:
+      fail: ${{ steps.problems.outputs.fail }}
     env:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
@@ -55,23 +61,27 @@ jobs:
         if: runner.os == 'Linux'
         uses: StirlingLabs/PreflightDotnetAction@main
         with:
-          coreName: ${{ needs.meta.outputs.coreName }}
           solution: ${{ inputs.solution }}
           gitUrl: ${{ needs.meta.outputs.gitUrl }}
           homepage: ${{ needs.meta.outputs.homepage }}
           defaultBranch: ${{ needs.meta.outputs.defaultBranch }}
 
-
       - name: NuGet Auth
+        id: auth
+        if: steps.preflight.outcome == 'success'
         uses: StirlingLabs/GithubNugetAuthAction@main
 
       - name: Restore
+        id: restore
+        if: steps.auth.outcome == 'success'
         env:
           solution: ${{ steps.preflight.outputs.solution }}
         run: |
           dotnet restore "$solution"
 
       - name: Build
+        id: build
+        if: steps.restore.outcome == 'success'
         run: |
           dotnet build "$solution" --configuration Release --no-restore
         env:
@@ -81,11 +91,24 @@ jobs:
           runNumber: ${{ github.run_id }}
 
       - name: Test
-        if: inputs.test == 'true'
-        run: dotnet test ${{ steps.preflight.outputs.solution }} --no-build --no-restore --configuration Release --logger GitHubActions
+        id: test
+        if: |
+          steps.build.outcome == 'success' && 
+          inputs.test == 'true'
+        env:
+          solution: ${{ steps.preflight.outputs.solution }}
+          coverlet: ${{ steps.preflight.outputs.msbuildCoverlet }}
+          logger: ${{ steps.preflight.outputs.githubLogger }}
+        run: |
+          [[ "$covertlet" == "true" ]] && coverOptions="--collect:\"XPlat Code Coverage\"" || coverOptions=""
+          [[ "$logger" == "true" ]] && loggerOptions="--logger GitHubActions" || loggerOptions=""
+          dotnet test "\"$solution\" --no-build --no-restore --configuration Release $coverOptions $loggerOptions"
 
       - name: Upload Artifacts
-        if: runner.os == 'Linux'
+        id: upload
+        if: |
+          steps.test.outcome == 'success' &&
+          runner.os == 'Linux'
         uses: actions/upload-artifact@v3
         with:
           name: ${{ needs.meta.outputs.project }}
@@ -94,7 +117,9 @@ jobs:
           if-no-files-found: error
 
       - name: Save coverage to PR
+        id: coverage-pr
         if: |
+          steps.build.outcome == 'success' &&
           inputs.test == 'true' &&
           github.event_name == 'pull_request' &&
           runner.os == 'Linux'
@@ -103,9 +128,12 @@ jobs:
           sources: '.github/coverage/prefix,coverage/,.github/coverage/suffix'
           token: ${{github.token}}
           comment: |
+            Coverage
 
       - name: Save coverage to storage branch
+        id: coverage-branch
         if: |
+          steps.build.outcome == 'success' &&
           github.event_name == 'push' &&
           runner.os == 'Linux'
         uses: StirlingLabs/BranchStorageAction@v21.07.3
@@ -120,6 +148,8 @@ jobs:
           prune: true
 
       - name: Clean
+        id: clean
+        if: steps.build.outcome == 'success'
         run: |
           dotnet clean "$sln"
           rm -rf ./**/{bin,obj}/**
@@ -127,19 +157,36 @@ jobs:
           sln: ${{ steps.preflight.outputs.solution }}
 
       - name: Test NuPkgs
-        if: inputs.test == 'true' && inputs.release == 'true'
+        id: test-nupkg
+        if: |
+          steps.clean.outcome == 'success' &&
+          inputs.test == 'true' && 
+          inputs.release == 'true'
+        env:
+          testProject: ${{ needs.meta.outputs.project }}.Tests
+          logger: ${{ steps.preflight.outputs.githubLogger }}
         run: |
           if [ -d "$testProject" ]; then
             dotnet restore "$testProject" -p:Configuration=Release -p:UseBuiltNuPkg=True
             dotnet build "$testProject" --configuration Release --no-restore -p:UseBuiltNuPkg=True
-            dotnet test "$testProject" --configuration Release --no-restore --no-build --logger GitHubActions -p:UseBuiltNuPkg=True
+            [[ "$logger" == "true" ]] && loggerOptions="--logger GitHubActions" || loggerOptions=""
+            #shellcheck disable=SC2086
+            dotnet test "$testProject" --configuration Release --no-restore --no-build $loggerOptions -p:UseBuiltNuPkg=True
           else
             echo "Tests not found at $testProject"
             ls ./*.Tests
             exit 1
           fi
+
+      - name: Problems?
+        id: problems
+        if: steps.test.outcome != 'success'
         env:
-          testProject: ${{ needs.meta.outputs.project }}.Tests
+          outcome: ${{ steps.test.outcome }}
+        run: |
+          echo -e "Outcome is \"$outcome\""
+          [[ "$outcome" == "success" ]] && fail="false" || fail="true"
+          echo "fail=$fail" >> "$GITHUB_OUTPUTS"
 
       - name: Summary
         id: summary
@@ -149,19 +196,26 @@ jobs:
           version: ${{ needs.meta.outputs.textVersion }}
           project: ${{ needs.meta.outputs.project }}
           event: ${{ github.event_name }}
+          fail: ${{ steps.problems.outputs.fail }}
+          buildOutcome: ${{ steps.build.outcome }}
+          testOutcome: ${{ steps.test.outcome }}
+          nupkgTestOutcome: ${{ steps.test-nupkg.outcome }}
         run: |
-          [[ "$release" == "true" ]] && headline="Ready for Release" || headline="Built & tested"
           # shellcheck disable=2086,2129
-          echo "### $headline on $RUNNER_OS" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Project built sucessfully" >> "$GITHUB_STEP_SUMMARY"
+          [[ "$fail" == "true" ]] && status="encountered problems" || status="successfully completed"
+          echo "### $RUNNER_OS $status" >> "$GITHUB_STEP_SUMMARY"
+          [[ "$release" == "true" ]] && echo "- Built & tested for release" >> "$GITHUB_STEP_SUMMARY"
+          [[ "$buildOutcome" == "success" ]] && buildStatus="sucessfully" || buildStatus="with problems"
+          echo "- Project built $buildStatus" >> "$GITHUB_STEP_SUMMARY"
           if [[ "$test" == "true" ]] ; then
-            echo "- Unit tests completed sucessfully" >> "$GITHUB_STEP_SUMMARY"
-            [[ "$release" == "true" ]] && echo "- NuPkgs were tested successfully" >> "$GITHUB_STEP_SUMMARY"
+            [[ "$testOutcome" == "success" ]] && testStatus="sucessfully" || testStatus="with problems"
+            echo "- Unit tests completed $testStatus" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "- Unit tests were skipped" >> "$GITHUB_STEP_SUMMARY"
           fi
-          if [[ "$event" == "pull_request" ]] ; then
-            echo "- Test coverage was updated in the PR" >> "$GITHUB_STEP_SUMMARY"
-          elif [[ "$event" == "push" ]] ; then
-            echo "- Test coverage was recorded in the \`storage\` branch" >> "$GITHUB_STEP_SUMMARY"
-          fi
+          [[ "$nupkgTestOutcome" == "success" ]] && nupkgTestStatus="sucessfully" || nupkgTestStatus="with problems"
+          [[ "$release" == "true" ]] && echo "- NuPkgs were tested $nupkgTestStatus" >> "$GITHUB_STEP_SUMMARY"
+          storageText="dropped on the floor, I don't know what to do with an $event event"
+          [[ "$event" == "pull_request" ]] && storageText="updated in the PR" 
+          [[ "$event" == "push" ]] && storageText="recorded in the \`storage\` branch"
+          echo "- Test coverage was $storageText" >> "$GITHUB_STEP_SUMMARY"
