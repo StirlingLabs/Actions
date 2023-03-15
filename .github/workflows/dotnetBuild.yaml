@@ -15,6 +15,10 @@ on:
         description: Run tests on this project?
         type: boolean
         default: true
+      strictPreflight:
+        description: Fail if preflight checks fail?
+        type: boolean
+        default: true
       release:
         description: Building for release?
         type: boolean
@@ -65,6 +69,8 @@ jobs:
           gitUrl: ${{ needs.meta.outputs.gitUrl }}
           homepage: ${{ needs.meta.outputs.homepage }}
           defaultBranch: ${{ needs.meta.outputs.defaultBranch }}
+          strict: ${{ inputs.strictPreflight }}
+          verbose: true
 
       - name: NuGet Auth
         id: auth
@@ -186,7 +192,7 @@ jobs:
         run: |
           echo -e "Outcome is \"$outcome\""
           [[ "$outcome" == "success" ]] && fail="false" || fail="true"
-          echo "fail=$fail" >> "$GITHUB_OUTPUTS"
+          echo "fail=$fail" >> "$GITHUB_OUTPUT"
 
       - name: Summary
         id: summary
