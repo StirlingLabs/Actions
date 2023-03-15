@@ -74,7 +74,7 @@ jobs:
 
       - name: NuGet Auth
         id: auth
-        if: steps.preflight.outcome == 'success'
+        if: steps.preflight.outcome == 'success' || steps.preflight.outcome == 'skipped'
         uses: StirlingLabs/GithubNugetAuthAction@main
 
       - name: Restore
