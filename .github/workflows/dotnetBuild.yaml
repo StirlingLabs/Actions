@@ -157,7 +157,7 @@ jobs:
         id: clean
         if: steps.build.outcome == 'success'
         run: |
-          dotnet clean "$sln"
+          #dotnet clean "$sln" -c Release # this has problems with our setup
           rm -rf ./**/{bin,obj}/**
         env:
           sln: ${{ steps.preflight.outputs.solution }}
