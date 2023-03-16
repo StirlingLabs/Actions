@@ -27,10 +27,6 @@ on:
       fail:
         description: Was the build not fully successful?
         value: ${{ jobs.build.outputs.fail }}
-    secrets:
-      token:
-        description: GitHub token for authentication
-        required: true
 
 jobs:
   meta:
@@ -75,7 +71,6 @@ jobs:
           defaultBranch: ${{ needs.meta.outputs.defaultBranch }}
           strict: ${{ inputs.strictPreflight }}
           verbose: true
-          token: ${{ secrets.token }}
 
       - name: NuGet Auth
         id: auth
