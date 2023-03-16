@@ -25,11 +25,16 @@
 - Break up steps as much as you can, practically.  This makes it easier for users to see what has happened.
 - `echo` enough to make sure a user can see what has gone wrong.  Be a bit more verbose than you might assume, because users won't have as much context as you do when writing it.
 - Use bash as your shell unless forced not to by some important external requirement.
-  - `default: ... shell: bash` is generally available and should be used whenever possible (default `env` is nice sometimes, too).
+  - `default: ... shell: bash` is generally available and should be used whenever possible 
+  - job-level `env` is useful for turning off dotnet tracking & logo:
+    ```yaml
+      env:
+        DOTNET_NOLOGO: true
+        DOTNET_CLI_TELEMETRY_OPTOUT: true
+    ```
 - Within steps:
   - `env` comes before `run`
   - Use bash functions to organise code
     - At least `main() {}`
   - End bash scripts with at least `exit` but ideally `main "$@" ; exit`.  This makes it easy to see the end of the script within the Action (amoung other benefits).
-- camelCase variables.  Just because that's what's there.
-- Lint all Actions.
+- lowerCamelCase variables in bash but lower_snake_case in `$GITHUB_OUTPUT`.
