@@ -171,12 +171,17 @@ jobs:
                   echo "Error: Failed to convert $versionJson into bash array: $versionArray"
                   #exit 1
                 fi
-                mapfile -t -d ' ' versionArray <<< "$versionList"
+                echo "Mapping $versionList"
+                mapfile -t versionArray <<< "$versionList"
                 for version in "${versionArray[@]}" ; do
                   quotedVersion="\"${version}\""
-                  echo "Is $quotedVersion in $pkgVersionJson?"
-                  [[ "$pkgVersionJson" == *"quotedVersion"* ]] && continue # Skip duplicates
-                  pkgVersionJson="${pkgVersionJson}${pkgVersionJsonComma}\"${version}\""
+                  if [[ "$pkgVersionJson" == *"quotedVersion"* ]] ; then
+                    echo "Skipping duplicate $version $quotedVersion is in $pkgVersionJson"
+                    continue
+                  else
+                    echo "Adding $quotedVersion"
+                  fi
+                  pkgVersionJson="${pkgVersionJson}${pkgVersionJsonComma}${quotedVersion}"
                   pkgVersionJsonComma=", "
                 done
               done
@@ -198,7 +203,7 @@ jobs:
             [[ "$pkg" == "$1" ]] && echo "searching for $pkg" >&2
             [[ "$pkg" == "" ]] && echo "Error: No package name provided" >&2 && exit 1
             url="https://api.nuget.org/v3-flatcontainer/${pkg}/index.json"
-            if ! response="$(curl -s "$url")" ; then
+            if ! response="$( curl -s "$url" )" ; then
               echo -e "Problem while getting ${url}\n${response}" >&2
               exit 1
             fi
