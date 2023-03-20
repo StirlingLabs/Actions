@@ -93,7 +93,6 @@ jobs:
           ignoreReleases: ${{ inputs.ignoreReleases }}
           forceVersion: ${{ inputs.forceVersion }}
         run: |
-          continue="false"
           # GitHub info
           releasesUrl="https://api.github.com/repos/${upstream}/releases"
           # Make these URLs available for other scripts
@@ -112,9 +111,9 @@ jobs:
           # Get release data
           releasesJson="$(jq -c . <<< "$(curl -s "${releasesUrl}")")"
           releaseList="$(jq -r ".[].tag_name" <<< "$releasesJson")"
-          echo "release list:"
+          echo "releases:"
           mapfile -t releaseArray <<< "$releaseList"
-          validReleaseList="" && validReleaseListComma=""
+          validReleaseList="[ " && validReleaseListComma=""
           for release in "${releaseArray[@]}" ; do
             # Skip releases in the ignore list
             version=${release#"$releasePrefix"}
@@ -124,16 +123,21 @@ jobs:
                [[ "${ignoreReleases}" != *"\"${release}\""* ]] && \
                [[ "${ignoreReleases}" != *" ${release} "* ]]
             then
-              validReleaseList="${validReleaseList}${validReleaseListComma}\"${release}\""
-              validReleaseListComma=" "
+              validReleaseList="${validReleaseList}${validReleaseListComma}\"${version}\""
+              validReleaseListComma=", "
               echo "- ${release} added"
             else
               echo "- ${release} ignored"
             fi
           done
-          [[ "$validReleaseList" == "" ]] && continue="false" || continue="true"
-          echo "releases=${validReleaseList}" >> "$GITHUB_OUTPUT"
-          echo "continue=${continue}" >> "$GITHUB_OUTPUT"
+          validReleaseList="${validReleaseList} ]"
+          if echo "$validReleaseList" | jq -c '[.[]]' ; then
+            echo "continue=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "continue=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "release_json=${validReleaseList}" >> "$GITHUB_OUTPUT"
+
       - name: NuGet Package List
         id: nuget
         if: ${{ steps.github.outputs.continue == 'true' }}
@@ -143,44 +147,64 @@ jobs:
         run: |
           # Gather NuGet release info
           main() {
-            continue="false"
-            pkgVersions="" && pkgVersionsComma=""
-            if [[ "$nupkgName" == *".RID."* ]] && [[ "$rids" != "" ]]  && [[ "$rids" != " " ]]; then
+            if [[ "$nupkgName" == *".RID."* ]] && [[ "$rids" != "" ]] ; then
+              # Check if all RIDs have packages for each version
               echo "RID-specific NuGet package $nupkgName -> $rids"
-              mapfile -t rids <<< "$rids"
-              for rid in $rids ; do
+              pkgVersionJson="[ " && pkgVersionJsonComma=""
+              mapfile -t -d ' ' rids <<< "$rids"
+              for rid in "${rids[@]}" ; do
                 nupkg="${nupkgName/.RID./".${rid}."}"
-                versions="$(getPackageVersions "$nupkg")"
-                mapfile -t versionArray <<< "$versions"
+                echo "Getting list for $nupkg"
+                versionJson="$(getPackageVersionJson "$nupkg")"
+                echo "NuGet has: ${versionJson}"
+                if ! versionList="$(echo "$versionJson" | jq -r '.[]')" ; then
+                  echo "Error: Failed to convert $versionJson into bash array: $versionArray"
+                  exit 1
+                fi
+                mapfile -t -d ' ' versionArray <<< "$versionList"
                 for version in "${versionArray[@]}" ; do
-                  [[ "$pkgVersions" == *"\"$version\""* ]] && continue # Skip duplicates
-                  pkgVersions="${pkgVersions}${pkgVersionsComma}\"${version}\""
-                  pkgVersionsComma=" "
+                  quotedVersion="\"${version}\""
+                  echo "Is $quotedVersion in $pkgVersionJson?"
+                  [[ "$pkgVersionJson" == *"quotedVersion"* ]] && continue # Skip duplicates
+                  pkgVersionJson="${pkgVersionJson}${pkgVersionJsonComma}\"${version}\""
+                  pkgVersionJsonComma=", "
                 done
-              done            
+              done
+              pkgVersionJson="${pkgVersionJson} ]"    
             else
               echo "Getting list for $nupkgName"
-              pkgVersions="$(getPackageVersions "$nupkgName")"
+              pkgVersionJson="$(getPackageVersionJson "$nupkgName")"
             fi
-            echo "NuGet has: ${pkgVersions}"
-            echo "versions=${pkgVersions}" >> "$GITHUB_OUTPUT"
-            [[ "$pkgVersions" == "" ]] && continue="false" || continue="true"
-            echo -e "continue:$continue\nNuGet package versions:${pkgVersions}"
-            echo "continue=${continue}" >> "$GITHUB_OUTPUT"
+            if echo "$pkgVersionJson" | jq -r '[.[]]' ; then
+              echo "continue=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "continue=false" >> "$GITHUB_OUTPUT"
+            fi
+            echo "version_json=${pkgVersionJson}" >> "$GITHUB_OUTPUT"
           }
           
-          function getPackageVersions() {
-            local nupkg="$1"
-            local packagesUrl="https://api.nuget.org/v3-flatcontainer/${nupkg}/index.json"
-            local packagesRaw && packagesRaw="$(curl -s "${packagesUrl}")"
-            if [[ "$packagesRaw" == *"BlobNotFound"* ]] ; then
-              echo "No packages found for $nupkg" >&2
-            elif [[ "$packagesRaw" == *"Error"* ]] ; then
-              echo -e "Problem while processing ${nupkg} at ${packagesUrl}:\n${packagesRaw}\n" >&2
+          function getPackageVersionJson() {
+            local pkg="$1" ; local url ; local response ; local json
+            [[ "$pkg" == "$1" ]] && echo "searching for $pkg" >&2
+            [[ "$pkg" == "" ]] && echo "Error: No package name provided" >&2 && exit 1
+            url="https://api.nuget.org/v3-flatcontainer/${pkg}/index.json"
+            if ! response="$(curl -s "${url}")" ; then
+              echo -e "Problem while getting ${url}:\n${response}" >&2
               exit 1
-            else
-              jq -r ".versions|sort|to_entries[]|(.value)" <<< "$packagesRaw"
             fi
+            if [[ "$response" == *"BlobNotFound"* ]] ; then
+              echo -e "Could not find $pkg at $url:\n$response" >&2
+              return
+            fi
+            if [[ "$response" == *"Error"* ]] ; then
+              echo -e "Problem while processing ${pkg} at ${url}:\n${response}\n" >&2
+              exit 1
+            fi
+            if ! json="$(jq -c '[.versions|sort|to_entries[]|(.value)]' <<< echo "$response")" ; then
+              echo -e "Problem while processing ${response}:\n${json}\n" >&2
+              exit 1
+            fi
+            echo "$json"
           }
           main "$@" ; exit $?
 
@@ -189,31 +213,54 @@ jobs:
         if: ${{ steps.nuget.outputs.continue == 'true' }}
         env:
           releasePrefix: ${{ inputs.releasePrefix }}
-          nugetVersions: ${{ steps.nuget.outputs.versions }}
-          githubReleases: ${{ steps.github.outputs.releases }}
+          nugetVersionJson: ${{ steps.nuget.outputs.version_json }}
+          githubReleaseJson: ${{ steps.github.outputs.release_json }}
         run: |
           #
-          # Get a list of upstream releases that do not have all of the required packages
-          continue="false"
-          releasesNeeded="[ " && releasesNeededSpace=" "
+          # From the above, prepare a list of releases that do not have all of the required packages
+          echo "Retrieving data"
+          if ! nugetVersions="$(echo "$nugetVersionJson" | jq -r '.[]')" ; then
+            echo "Error: Failed to convert $nugetVersionJson into bash array: $nugetVersions"
+            exit 1
+          fi
+          if ! githubReleases="$(echo "$githubReleaseJson" | jq -r '.[]')" ; then
+            echo "Error: Failed to convert $githubReleaseJson into bash array: $githubReleases"
+            exit 1
+          fi
+
+          mapfile -t -d ' ' nugetVersions <<< "$nugetVersions"
+          mapfile -t -d ' ' githubReleases <<< "$githubReleases"
+
           echo "Determining requirements"
-          mapfile -t releaseArray <<< "$githubReleases"
-          for release in "${releaseArray[@]}" ; do
-            version=${release#"$releasePrefix"}
-            echo "${release} ~ ${version}"
-            if [[ "$nugetVersions" != *"\"${version}\""* ]] ; then
-              echo "Need ${release} ~ ${version}"
-              continue="true"
-              releasesNeeded="${releasesNeeded}${releasesNeededSpace}\"${release}\""
-              releasesNeededSpace=", "
+          releasesNeededJson="[ " ; releasesNeededJsonDelim="" ; releasesNeeded="" ; releasesNeededDelim=""
+          for release in "${githubReleases[@]}" ; do
+            if [[ "$release" != *"\""* ]] ; then
+              quotedRelease="\"${release}\""
+              echo "Quoting release"
             else
-              echo "Have ${release} ~ ${version}"
+              quotedRelease="${release}"
+            fi
+            echo "Testing if ${quotedRelease} is in ${nugetVersions[*]}"
+            if [[ "${nugetVersions[*]}" != *"${quotedRelease}"* ]] ; then
+              echo "Need ${release}"
+              releasesNeededJson="${releasesNeededJson}${releasesNeededJsonDelim}\"${release}\""
+              releasesNeeded="${releasesNeeded}${releasesNeededDelim}\"${release}\""
+              releasesNeededJsonDelim=", " ; releasesNeededDelim=" "
+            else
+              echo "Have ${release} ~ ${nugetVersions[*]}"
             fi
           done
-          releasesNeeded="${releasesNeeded} ]"
-          echo "continue=${continue}" >> "$GITHUB_OUTPUT"
+          releasesNeededJson="${releasesNeededJson} ]"
+
+          echo "Writing output"
+          if echo "$releasesNeededJson" | jq -c '[.[]]' ; then
+            echo "continue=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "continue=false" >> "$GITHUB_OUTPUT"
+          fi
           echo "releasesNeeded=${releasesNeeded}" >> "$GITHUB_OUTPUT"
-          echo -e "continue: $continue\nReleases needed: ${releasesNeeded}"
+          echo "releases_needed_json=${releasesNeededJson}" >> "$GITHUB_OUTPUT"
+          echo -e "Releases needed: ${releasesNeededJson}"
 
       - name: Arrays
         id: arrays
