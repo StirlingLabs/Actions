@@ -97,6 +97,7 @@ jobs:
           # GitHub info
           releasesUrl="https://api.github.com/repos/${upstream}/releases"
           # Make these URLs available for other scripts
+          #shellcheck disable=SC2129
           echo "releasesUrl=${releasesUrl}" >> "$GITHUB_OUTPUT"
           echo "githubApi=https://api.github.com/repos/${upstream}" >> "$GITHUB_OUTPUT"
           echo "tagsUrl=https://api.github.com/repos/${upstream}/tags" >> "$GITHUB_OUTPUT"
@@ -178,7 +179,7 @@ jobs:
               echo -e "Problem while processing ${nupkg} at ${packagesUrl}:\n${packagesRaw}\n" >&2
               exit 1
             else
-              echo "$(jq -r ".versions|sort|to_entries[]|(.value)" <<< "$packagesRaw")"
+              jq -r ".versions|sort|to_entries[]|(.value)" <<< "$packagesRaw"
             fi
           }
           main "$@" ; exit $?
@@ -194,7 +195,7 @@ jobs:
           #
           # Get a list of upstream releases that do not have all of the required packages
           continue="false"
-          releasesNeeded="" && releasesNeededSpace=" "
+          releasesNeeded="[ " && releasesNeededSpace=" "
           echo "Determining requirements"
           mapfile -t releaseArray <<< "$githubReleases"
           for release in "${releaseArray[@]}" ; do
@@ -209,6 +210,7 @@ jobs:
               echo "Have ${release} ~ ${version}"
             fi
           done
+          releasesNeeded="${releasesNeeded} ]"
           echo "continue=${continue}" >> "$GITHUB_OUTPUT"
           echo "releasesNeeded=${releasesNeeded}" >> "$GITHUB_OUTPUT"
           echo -e "continue: $continue\nReleases needed: ${releasesNeeded}"
