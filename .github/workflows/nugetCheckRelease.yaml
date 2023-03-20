@@ -109,8 +109,18 @@ jobs:
             exit 0
           fi
           # Get release data
-          releasesJson="$(jq -c . <<< "$(curl -s "${releasesUrl}")")"
-          releaseList="$(jq -r ".[].tag_name" <<< "$releasesJson")"
+          if ! json="$(curl -s "${releasesUrl}")" ; then
+            echo -e "Failed to get release data from $releasesUrl:\n$json"
+            #exit 1
+          fi
+          if ! releasesJson="$(jq -c . <<< "$json")" ; then
+            echo -e "Failed to parse json from $releasesUrl:\n$releasesJson\njson:\n$json"
+            #exit 1
+          fi
+          if ! releaseList="$(jq -r ".[].tag_name" <<< "$releasesJson")" ; then
+            echo -e "Failed to parse releaseList from releasesJson:\n$releaseList\nreleasesJson:\n$releasesJson"
+            #exit 1
+          fi
           echo "releases:"
           mapfile -t releaseArray <<< "$releaseList"
           validReleaseList="[ " && validReleaseListComma=""
@@ -157,9 +167,9 @@ jobs:
                 echo "Getting list for $nupkg"
                 versionJson="$(getPackageVersionJson "$nupkg")"
                 echo "NuGet has: ${versionJson}"
-                if ! versionList="$(echo "$versionJson" | jq -r '.[]')" ; then
+                if ! versionList="$(jq -r '.[]' <<< "$versionJson")" ; then
                   echo "Error: Failed to convert $versionJson into bash array: $versionArray"
-                  exit 1
+                  #exit 1
                 fi
                 mapfile -t -d ' ' versionArray <<< "$versionList"
                 for version in "${versionArray[@]}" ; do
@@ -188,20 +198,20 @@ jobs:
             [[ "$pkg" == "$1" ]] && echo "searching for $pkg" >&2
             [[ "$pkg" == "" ]] && echo "Error: No package name provided" >&2 && exit 1
             url="https://api.nuget.org/v3-flatcontainer/${pkg}/index.json"
-            if ! response="$(curl -s "${url}")" ; then
-              echo -e "Problem while getting ${url}:\n${response}" >&2
+            if ! response="$(curl -s "$url")" ; then
+              echo -e "Problem while getting ${url}\n${response}" >&2
               exit 1
             fi
             if [[ "$response" == *"BlobNotFound"* ]] ; then
-              echo -e "Could not find $pkg at $url:\n$response" >&2
+              echo -e "Could not find $pkg at $url\n$response" >&2
               return
             fi
             if [[ "$response" == *"Error"* ]] ; then
               echo -e "Problem while processing ${pkg} at ${url}:\n${response}\n" >&2
               exit 1
             fi
-            if ! json="$(jq -c '[.versions|sort|to_entries[]|(.value)]' <<< echo "$response")" ; then
-              echo -e "Problem while processing ${response}:\n${json}\n" >&2
+            if ! json="$(jq -c '[.versions|sort|to_entries[]|(.value)]' <<< "$response")" ; then
+              echo -e "Problem while processing ${response}\n${json}\n" >&2
               exit 1
             fi
             echo "$json"
