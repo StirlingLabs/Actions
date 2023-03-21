@@ -157,43 +157,38 @@ jobs:
         run: |
           # Gather NuGet release info
           main() {
+            declare -ag common=()
             if [[ "$nupkgName" == *".RID."* ]] && [[ "$rids" != "" ]] ; then
               # Check if all RIDs have packages for each version
               echo "RID-specific NuGet package $nupkgName -> $rids"
-              pkgVersionJson="[ " && pkgVersionJsonComma=""
+              # Get the list of versions for each RID
               mapfile -t -d ' ' rids <<< "$rids"
+              i=0 
               for rid in "${rids[@]}" ; do
-                nupkg="${nupkgName/.RID./".${rid}."}"
-                echo "Getting list for $nupkg"
+                nupkg="${nupkgName/.RID./".${rid//[$'\t\r\n ']}."}"
+                echo "${i}. Getting list for $nupkg"
                 versionJson="$(getPackageVersionJson "$nupkg")"
                 echo "NuGet has: ${versionJson}"
-                if ! versionList="$(jq -r '.[]' <<< "$versionJson")" ; then
-                  echo "Error: Failed to convert $versionJson into bash array: $versionArray"
+                
+                if ! var="$( jq -r '.[]' <<< "$versionJson" )" ; then
+                  echo "Error: Failed to convert \`$versionJson\` into bash array: $var"
                   #exit 1
                 fi
-                echo "Mapping $versionList"
-                mapfile -t versionArray <<< "$versionList"
-                for version in "${versionArray[@]}" ; do
-                  quotedVersion="\"${version}\""
-                  if [[ "$pkgVersionJson" == *"quotedVersion"* ]] ; then
-                    echo "Skipping duplicate $version $quotedVersion is in $pkgVersionJson"
-                    continue
-                  else
-                    echo "Adding $quotedVersion"
-                  fi
-                  pkgVersionJson="${pkgVersionJson}${pkgVersionJsonComma}${quotedVersion}"
-                  pkgVersionJsonComma=", "
-                done
+                mapfile -t "versionList${i}" <<< "${var[*]}"
+                i=$((i+1))
               done
-              pkgVersionJson="${pkgVersionJson} ]"    
+              # Compare the lists
+              findCommonElements "versionList"
+              pkgVersionJson="$( jsonifyArray "${common[*]}" )"  
             else
               echo "Getting list for $nupkgName"
               pkgVersionJson="$(getPackageVersionJson "$nupkgName")"
             fi
-            if echo "$pkgVersionJson" | jq -r '[.[]]' ; then
-              echo "continue=true" >> "$GITHUB_OUTPUT"
-            else
+            if ! out="$( echo "$pkgVersionJson" | jq -r '[.[]]' )" ; then
+              echo "Error: Failed to convert \`$pkgVersionJson\` into bash array: $out"
               echo "continue=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "continue=true" >> "$GITHUB_OUTPUT"
             fi
             echo "version_json=${pkgVersionJson}" >> "$GITHUB_OUTPUT"
           }
@@ -220,6 +215,53 @@ jobs:
               exit 1
             fi
             echo "$json"
+          }
+
+          #
+          # Find common values in a set of arrays
+          #
+          # Takes a single argument, namePrefix, being the non-numeric portion of the name a set of 
+          # globally-scoped arrays, where the second portion of the name is sequential integers starting at 0.
+          # e.g. array0, array 1...
+          # NOTE: side effects!
+          # The function puts values into an array called "common", which must be declared with global scope,
+          # prior to calling.
+          function findCommonElements() {
+            local arrayPrefix="$1"
+            declare -i i=0
+            # Count how many arrays matching the format have entries in them
+            while true ; do 
+              declare var="$arrayPrefix${i}[@]"
+              declare -a array=( "${!var}" )
+              [ "${#array}" -eq 0 ] && break 
+              i=$((i+1))
+              echo
+            done
+            arrayCount=$i
+            # Put all common entries into the "common" array (must exist in global scope)
+            mapfile -d '' common < <(
+              (for (( i=0 ; i<=arrayCount ; i++ )) ; do 
+                declare var="$arrayPrefix${i}[@]"
+                declare -a array=( "${!var}" )
+                printf %s\\0 "${array[@]}" 
+              done) \
+              | sort -zn \
+              | uniq -zcd \
+              | grep -z "^\ *$arrayCount" \
+              | cut -zb9-
+            )
+          }
+
+          function jsonifyArray() {
+              local delim="" ; local json="[ " ; declare -a array
+              mapfile -t array <<< "$@"
+              #shellcheck disable=SC2128
+              for element in $array ; do
+                json="${json}${delim}\"${element}\""
+                delim=", "
+              done
+              json="$json ]"
+              echo "$json"
           }
           main "$@" ; exit $?
 
