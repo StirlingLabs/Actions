@@ -190,6 +190,7 @@ jobs:
             else
               echo "continue=true" >> "$GITHUB_OUTPUT"
             fi
+            echo "json=${pkgVersionJson}"
             echo "version_json=${pkgVersionJson}" >> "$GITHUB_OUTPUT"
           }
           
@@ -231,17 +232,18 @@ jobs:
             declare -i i=0
             # Count how many arrays matching the format have entries in them
             while true ; do 
-              declare var="$arrayPrefix${i}[@]"
+              echo "Looking for common elements in \`${arrayPrefix}${i}\`"
+              declare var="${arrayPrefix}${i}[@]"
               declare -a array=( "${!var}" )
               [ "${#array}" -eq 0 ] && break 
               i=$((i+1))
-              echo
             done
             arrayCount=$i
+            echo "Found $arrayCount arrays"
             # Put all common entries into the "common" array (must exist in global scope)
             mapfile -d '' common < <(
               (for (( i=0 ; i<=arrayCount ; i++ )) ; do 
-                declare var="$arrayPrefix${i}[@]"
+                declare var="${arrayPrefix}${i}[@]"
                 declare -a array=( "${!var}" )
                 printf %s\\0 "${array[@]}" 
               done) \
@@ -284,36 +286,42 @@ jobs:
             echo "Error: Failed to convert $githubReleaseJson into bash array: $githubReleases"
             exit 1
           fi
-
-          mapfile -t -d ' ' nugetVersions <<< "$nugetVersions"
-          mapfile -t -d ' ' githubReleases <<< "$githubReleases"
+          declare -a nugetArray=()
+          declare -a githubArray=()
+          mapfile -t -d ' ' nugetArray <<< "$nugetVersions"
+          mapfile -t -d ' ' githubArray <<< "$githubReleases"
 
           echo "Determining requirements"
+          #
+          # Releases Needed should not include things that we have for every platform *i.e nugetArray*
           releasesNeededJson="[ " ; releasesNeededJsonDelim="" ; releasesNeeded="" ; releasesNeededDelim=""
-          for release in "${githubReleases[@]}" ; do
-            if [[ "$release" != *"\""* ]] ; then
-              quotedRelease="\"${release}\""
-              echo "Quoting release"
+          #shellcheck disable=SC2128
+          for release in $githubArray ; do
+            found="false"
+            #shellcheck disable=SC2128
+            for version in $nugetArray ; do
+                if [[ "${version}" == "${release}" ]] ; then
+                  found="true"
+                  break
+                fi
+            done
+            if [[ "$found" == "true" ]] ; then
+              echo "Have ${release}"
             else
-              quotedRelease="${release}"
-            fi
-            echo "Testing if ${quotedRelease} is in ${nugetVersions[*]}"
-            if [[ "${nugetVersions[*]}" != *"${quotedRelease}"* ]] ; then
               echo "Need ${release}"
               releasesNeededJson="${releasesNeededJson}${releasesNeededJsonDelim}\"${release}\""
               releasesNeeded="${releasesNeeded}${releasesNeededDelim}\"${release}\""
               releasesNeededJsonDelim=", " ; releasesNeededDelim=" "
-            else
-              echo "Have ${release} ~ ${nugetVersions[*]}"
             fi
           done
           releasesNeededJson="${releasesNeededJson} ]"
 
           echo "Writing output"
-          if echo "$releasesNeededJson" | jq -c '[.[]]' ; then
-            echo "continue=true" >> "$GITHUB_OUTPUT"
-          else
+          if ! out="$( echo "$releasesNeededJson" | jq -c '[.[]]' )" ; then
+            echo "Error: Failed to convert $releasesNeededJson into bash array: $out"
             echo "continue=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "continue=true" >> "$GITHUB_OUTPUT"
           fi
           echo "releasesNeeded=${releasesNeeded}" >> "$GITHUB_OUTPUT"
           echo "releases_needed_json=${releasesNeededJson}" >> "$GITHUB_OUTPUT"
@@ -325,22 +333,26 @@ jobs:
         env:
           rids: ${{ inputs.rids }}
         run: |
-          ridArray="[ " && ridArrayComma=""
-          platformArray="[ " && platformArrayComma=""
+          # Write out the RID list as JSON for use in the next step
+          ridJson="[ " && ridJsonComma=""
+          platformJson="[ " && platformJsonComma=""
           for rid in $rids ; do
-            ridArray="${ridArray}${ridArrayComma}\"${rid}\""
-            ridArrayComma=", "
+            ridJson="${ridJson}${ridJsonComma}\"${rid}\""
+            ridJsonComma=", "
             case "$rid" in
               "linux-x64") platform="ubuntu-latest" ;;
               "osx") platform="macos-latest" ;;
               "win-x64") platform="windows-latest" ;;
               *) platform="ubuntu-latest" ;;
             esac
-            platformArray="${platformArray}${platformArrayComma}\"${platform}\""
-            platformArrayComma=", "
+            platformJson="${platformJson}${platformJsonComma}\"${platform}\""
+            platformJsonComma=", "
           done
           ridArray="${ridArray} ]"
           platformArray="${platformArray} ]"
-          echo "ridArray=$ridArray" >> "$GITHUB_OUTPUT"
-          echo "platformArray=$platformArray" >> "$GITHUB_OUTPUT"
+          #shellcheck disable=SC2129
+          echo "ridArray=$ridJson" >> "$GITHUB_OUTPUT" # DEPRECATED - use rid_json
+          echo "rid_json=$ridJson" >> "$GITHUB_OUTPUT"
+          echo "platform_json=$platformJson" >> "$GITHUB_OUTPUT" 
+          echo "platformArray=$platformJson" >> "$GITHUB_OUTPUT" # DEPRECATED - use platform_json
           #end
