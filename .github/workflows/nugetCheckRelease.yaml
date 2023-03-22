@@ -31,8 +31,11 @@ on:
 
     outputs:
       releasesNeeded:
+        description: JSON array of the version numbers that do not have all of the required packages (i.e. one for each RID) (deprecated, use releases_needed_json instead)
+        value: ${{ jobs.check.outputs.releases_needed_json }}
+      releases_needed_json:
         description: JSON array of the version numbers that do not have all of the required packages (i.e. one for each RID)
-        value: ${{ jobs.check.outputs.releasesNeeded }}
+        value: ${{ jobs.check.outputs.releases_needed_json }}
       continue:
         description: Boolean value; true if there are releases needed
         value: ${{ jobs.check.outputs.continue }}
@@ -75,7 +78,7 @@ jobs:
       run:
         shell: bash
     outputs:
-      releasesNeeded: ${{ steps.requirements.outputs.releasesNeeded }}
+      releases_needed_json: ${{ steps.requirements.outputs.releases_needed_json }}
       continue: ${{ steps.requirements.outputs.continue }}
       githubApi: ${{ steps.github.outputs.githubApi }}
       releasesUrl: ${{ steps.github.outputs.releasesUrl }}
@@ -198,7 +201,8 @@ jobs:
             local pkg="$1" ; local url ; local response ; local json
             [[ "$pkg" == "$1" ]] && echo "searching for $pkg" >&2
             [[ "$pkg" == "" ]] && echo "Error: No package name provided" >&2 && exit 1
-            url="https://api.nuget.org/v3-flatcontainer/${pkg}/index.json"
+            # Docs say pkg should be lowercase and we have had problems on the action runners
+            url="https://api.nuget.org/v3-flatcontainer/${pkg,,}/index.json"
             if ! response="$( curl -s "$url" )" ; then
               echo -e "Problem while getting ${url}\n${response}" >&2
               exit 1
@@ -272,6 +276,7 @@ jobs:
         if: ${{ steps.nuget.outputs.continue == 'true' }}
         env:
           releasePrefix: ${{ inputs.releasePrefix }}
+          ignoreReleases: ${{ inputs.ignoreReleases }}
           nugetVersionJson: ${{ steps.nuget.outputs.version_json }}
           githubReleaseJson: ${{ steps.github.outputs.release_json }}
         run: |
@@ -290,16 +295,18 @@ jobs:
           declare -a githubArray=()
           mapfile -t -d ' ' nugetArray <<< "$nugetVersions"
           mapfile -t -d ' ' githubArray <<< "$githubReleases"
+          mapfile -t -d ' ' ignoreArray <<< "$ignoreReleases"
 
           echo "Determining requirements"
           #
           # Releases Needed should not include things that we have for every platform *i.e nugetArray*
-          releasesNeededJson="[ " ; releasesNeededJsonDelim="" ; releasesNeeded="" ; releasesNeededDelim=""
+          # nor should it include things that are ignored *i.e. ignoreReleases*
+          releasesNeededJson="[ " ; releasesNeededJsonDelim=""
           #shellcheck disable=SC2128
-          for release in $githubArray ; do
+          for release in $githubArray ; do           # DON'T use "${githubArray[@]}"
             found="false"
             #shellcheck disable=SC2128
-            for version in $nugetArray ; do
+            for version in $nugetArray ; do           # DON'T use "${nugetArray[@]}"
                 if [[ "${version}" == "${release}" ]] ; then
                   found="true"
                   break
@@ -308,10 +315,20 @@ jobs:
             if [[ "$found" == "true" ]] ; then
               echo "Have ${release}"
             else
-              echo "Need ${release}"
-              releasesNeededJson="${releasesNeededJson}${releasesNeededJsonDelim}\"${release}\""
-              releasesNeeded="${releasesNeeded}${releasesNeededDelim}\"${release}\""
-              releasesNeededJsonDelim=", " ; releasesNeededDelim=" "
+              echo -n "Potentially need ${release}... "
+              ignore="false"
+              for element in "${ignoreArray[@]}" ; do        # MUST use "${ignoreArray[@]}"
+                if [[ "$element" == "$release" ]] ; then
+                  echo "no, ignored."
+                  ignore="true"
+                  break
+                fi
+              done
+              if [[ "$ignore" == "false" ]] ; then
+                releasesNeededJson="${releasesNeededJson}${releasesNeededJsonDelim}\"${release}\""
+                releasesNeededJsonDelim=", "
+                echo "do need, added to the list."
+              fi
             fi
           done
           releasesNeededJson="${releasesNeededJson} ]"
@@ -323,7 +340,6 @@ jobs:
           else
             echo "continue=true" >> "$GITHUB_OUTPUT"
           fi
-          echo "releasesNeeded=${releasesNeeded}" >> "$GITHUB_OUTPUT"
           echo "releases_needed_json=${releasesNeededJson}" >> "$GITHUB_OUTPUT"
           echo -e "Releases needed: ${releasesNeededJson}"
 
