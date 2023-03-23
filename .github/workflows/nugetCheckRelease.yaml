@@ -179,11 +179,11 @@ jobs:
                 versionJson="$(getPackageVersionJson "$nupkg")"
                 echo "NuGet has: ${versionJson}"
                 
-                if ! var="$( jq -r '.[]' <<< "$versionJson" )" ; then
-                  echo "Error: Failed to convert \`$versionJson\` into bash array: $var"
+                if ! list="$( jq -r '.[]' <<< "$versionJson" )" ; then
+                  echo "Error: Failed to convert \`$versionJson\` into bash list: $list"
                   #exit 1
                 fi
-                mapfile -t "versionList${i}" <<< "${var[*]}"
+                mapfile -t "versionList${i}" <<< "${list[*]}" # create an array for each RID
                 i=$((i+1))
               done
               # Compare the lists
@@ -358,7 +358,7 @@ jobs:
           # Write out the RID list as JSON for use in the next step
           main() {
             ridJson="[ " ; ridJsonComma=""
-            platformJson="[ " && platformJsonComma=""
+            platformJson="[ " ; platformJsonComma=""
             for rid in $rids ; do
               ridJson="${ridJson}${ridJsonComma}\"${rid}\""
               ridJsonComma=", "
@@ -371,8 +371,8 @@ jobs:
               platformJson="${platformJson}${platformJsonComma}\"${platform}\""
               platformJsonComma=", "
             done
-            ridArray="${ridArray} ]"
-            platformArray="${platformArray} ]"
+            ridJson="${ridJson} ]"
+            platformJson="${platformJson} ]"
             if checkJson "$ridJson" ; then
               echo "rids_json=$ridJson" >> "$GITHUB_OUTPUT"
             fi
