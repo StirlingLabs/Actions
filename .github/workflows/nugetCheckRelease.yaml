@@ -54,12 +54,18 @@ on:
       gitUrl:
         description: GitHub project git URL
         value: ${{ jobs.check.outputs.gitUrl }}
-      platformArray:
+      platform_json:
         description: Platform identifiers of the platforms required in a JSON array
-        value: ${{ jobs.check.outputs.platformArray }}
-      ridArray:
+        value: ${{ jobs.check.outputs.platform_json }}
+      platformArray:
+        description: Platform identifiers of the platforms required in a JSON array (deprecated, use platform_json instead)
+        value: ${{ jobs.check.outputs.platform_json }}
+      rids_json:
         description: Runtime identifiers of the platforms tested in a JSON array
-        value: ${{ jobs.check.outputs.ridArray }}
+        value: ${{ jobs.check.outputs.rids_json }}
+      ridArray:
+        description: Runtime identifiers of the platforms tested in a JSON array (deprecated, use rids_json instead)
+        value: ${{ jobs.check.outputs.rids_json }}
       rids:
         description: Runtime identifiers from input in a simple list
         value: ${{ inputs.rids }}
@@ -85,8 +91,8 @@ jobs:
       tagsUrl: ${{ steps.github.outputs.tagsUrl }}
       tagUrl: ${{ steps.github.outputs.tagUrl }}
       gitUrl: ${{ steps.github.outputs.gitUrl }}
-      ridArray: ${{ steps.arrays.outputs.ridArray }}
-      platformArray: ${{ steps.arrays.outputs.platformArray }}
+      rids_json: ${{ steps.arrays.outputs.rids_json }}
+      platform_json: ${{ steps.arrays.outputs.platform_json }}
     steps:
       - name: GitHub Release List
         id: github
@@ -350,25 +356,39 @@ jobs:
           rids: ${{ inputs.rids }}
         run: |
           # Write out the RID list as JSON for use in the next step
-          ridJson="[ " && ridJsonComma=""
-          platformJson="[ " && platformJsonComma=""
-          for rid in $rids ; do
-            ridJson="${ridJson}${ridJsonComma}\"${rid}\""
-            ridJsonComma=", "
-            case "$rid" in
-              "linux-x64") platform="ubuntu-latest" ;;
-              "osx") platform="macos-latest" ;;
-              "win-x64") platform="windows-latest" ;;
-              *) platform="ubuntu-latest" ;;
-            esac
-            platformJson="${platformJson}${platformJsonComma}\"${platform}\""
-            platformJsonComma=", "
-          done
-          ridArray="${ridArray} ]"
-          platformArray="${platformArray} ]"
-          #shellcheck disable=SC2129
-          echo "ridArray=$ridJson" >> "$GITHUB_OUTPUT" # DEPRECATED - use rid_json
-          echo "rid_json=$ridJson" >> "$GITHUB_OUTPUT"
-          echo "platform_json=$platformJson" >> "$GITHUB_OUTPUT" 
-          echo "platformArray=$platformJson" >> "$GITHUB_OUTPUT" # DEPRECATED - use platform_json
-          #end
+          main() {
+            ridJson="[ " ; ridJsonComma=""
+            platformJson="[ " && platformJsonComma=""
+            for rid in $rids ; do
+              ridJson="${ridJson}${ridJsonComma}\"${rid}\""
+              ridJsonComma=", "
+              case "$rid" in
+                "linux-x64") platform="ubuntu-latest" ;;
+                "osx") platform="macos-latest" ;;
+                "win-x64") platform="windows-latest" ;;
+                *) platform="ubuntu-latest" && echo "‼️ Warning: Unrecognised RID: ${rid}."  ;;
+              esac
+              platformJson="${platformJson}${platformJsonComma}\"${platform}\""
+              platformJsonComma=", "
+            done
+            ridArray="${ridArray} ]"
+            platformArray="${platformArray} ]"
+            if checkJson "$ridJson" ; then
+              echo "rids_json=$ridJson" >> "$GITHUB_OUTPUT"
+            fi
+            if checkJson "$platformJson" ; then
+              echo "platform_json=$platformJson" >> "$GITHUB_OUTPUT" 
+            fi
+          }
+
+          function checkJson() {
+            local json="$1" ; local out
+            if ! out="$( echo "$json" | jq -c '[.[]]' )" ; then
+              echo "‼️ Error: Failed to convert $json into bash array: $out" >&2
+              echo "continue=false" >> "$GITHUB_OUTPUT"
+              return 1
+            else
+              echo "continue=true" >> "$GITHUB_OUTPUT"
+            fi
+          }
+          main "$@" ; exit $?
