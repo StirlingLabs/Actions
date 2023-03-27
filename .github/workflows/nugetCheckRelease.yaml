@@ -340,14 +340,17 @@ jobs:
           releasesNeededJson="${releasesNeededJson} ]"
 
           echo "Writing output"
-          if ! out="$( echo "$releasesNeededJson" | jq -c '[.[]]' )" ; then
+          continue="false"
+          if ! out="$( jq -c '.[]' <<< "$releasesNeededJson" )" ; then
             echo "Error: Failed to convert $releasesNeededJson into bash array: $out"
-            echo "continue=false" >> "$GITHUB_OUTPUT"
+          elif [[ "$out" == "" ]] || [[ "$out" == "null" ]] ; then
+            echo "No releases needed"
           else
-            echo "continue=true" >> "$GITHUB_OUTPUT"
+            continue="true"
           fi
+          echo "Releases needed JSON is ${releasesNeededJson}"
+          echo "continue=$continue" >> "$GITHUB_OUTPUT"
           echo "releases_needed_json=${releasesNeededJson}" >> "$GITHUB_OUTPUT"
-          echo -e "Releases needed: ${releasesNeededJson}"
 
       - name: Arrays
         id: arrays
