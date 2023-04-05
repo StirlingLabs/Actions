@@ -11,12 +11,16 @@ on:
         description: Solution file name
         type: string
         required: false
-      test:
-        description: Run tests on this project?
+      library:
+        description: Does this project build a library, or an executable?
         type: boolean
         default: true
       strictPreflight:
         description: Fail if preflight checks fail?
+        type: boolean
+        default: true
+      test:
+        description: Run tests on this project?
         type: boolean
         default: true
       release:
@@ -62,13 +66,12 @@ jobs:
 
       - name: Preflight
         id: preflight
-        if: runner.os == 'Linux'
+        if: false && runner.os == 'Linux' # Turned off until Preflight is working
         uses: StirlingLabs/PreflightDotnetAction@main
         with:
           solution: ${{ inputs.solution }}
-          gitUrl: ${{ needs.meta.outputs.gitUrl }}
+          library: ${{ inputs.library }}
           homepage: ${{ needs.meta.outputs.homepage }}
-          defaultBranch: ${{ needs.meta.outputs.defaultBranch }}
           strict: ${{ inputs.strictPreflight }}
           verbose: true
 
@@ -108,11 +111,13 @@ jobs:
         run: |
           [[ "$covertlet" == "true" ]] && coverOptions="--collect:\"XPlat Code Coverage\"" || coverOptions=""
           [[ "$logger" == "true" ]] && loggerOptions="--logger GitHubActions" || loggerOptions=""
-          dotnet test "\"$solution\" --no-build --no-restore --configuration Release $coverOptions $loggerOptions"
+          #shellcheck disable=SC2086
+          dotnet test "$solution" --no-build --no-restore --configuration Release $coverOptions $loggerOptions
 
-      - name: Upload Artifacts
-        id: upload
+      - name: Upload Library
+        id: upload_library
         if: |
+          inputs.library == 'true' &&
           steps.test.outcome == 'success' &&
           runner.os == 'Linux'
         uses: actions/upload-artifact@v3
@@ -120,6 +125,19 @@ jobs:
           name: ${{ needs.meta.outputs.project }}
           path: |
             artifacts/*.nupkg
+          if-no-files-found: error
+
+      - name: Upload Executable
+        id: upload_executable
+        if: |
+          inputs.library == 'false' &&
+          steps.test.outcome == 'success' &&
+          runner.os == 'Linux'
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ needs.meta.outputs.project }}
+          path: |
+            artifacts/*
           if-no-files-found: error
 
       - name: Save coverage to PR
@@ -133,8 +151,6 @@ jobs:
         with:
           sources: '.github/coverage/prefix,coverage/,.github/coverage/suffix'
           token: ${{github.token}}
-          comment: |
-            Coverage
 
       - name: Save coverage to storage branch
         id: coverage-branch
@@ -165,6 +181,7 @@ jobs:
       - name: Test NuPkgs
         id: test-nupkg
         if: |
+          inputs.library == 'true' &&
           steps.clean.outcome == 'success' &&
           inputs.test == 'true' && 
           inputs.release == 'true'
@@ -172,17 +189,16 @@ jobs:
           testProject: ${{ needs.meta.outputs.project }}.Tests
           logger: ${{ steps.preflight.outputs.githubLogger }}
         run: |
-          if [ -d "$testProject" ]; then
-            dotnet restore "$testProject" -p:Configuration=Release -p:UseBuiltNuPkg=True
-            dotnet build "$testProject" --configuration Release --no-restore -p:UseBuiltNuPkg=True
-            [[ "$logger" == "true" ]] && loggerOptions="--logger GitHubActions" || loggerOptions=""
-            #shellcheck disable=SC2086
-            dotnet test "$testProject" --configuration Release --no-restore --no-build $loggerOptions -p:UseBuiltNuPkg=True
-          else
+          if [ ! -d "$testProject" ]; then
             echo "Tests not found at $testProject"
             ls ./*.Tests
             exit 1
           fi
+          dotnet restore "$testProject" -p:Configuration=Release -p:UseBuiltNuPkg=True
+          dotnet build "$testProject" --configuration Release --no-restore -p:UseBuiltNuPkg=True
+          [[ "$logger" == "true" ]] && loggerOptions="--logger GitHubActions" || loggerOptions=""
+          #shellcheck disable=SC2086
+          dotnet test "$testProject" --configuration Release $loggerOptions --no-restore --no-build -p:UseBuiltNuPkg=True
 
       - name: Problems?
         id: problems
