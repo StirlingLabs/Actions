@@ -31,6 +31,9 @@ on:
       fail:
         description: Was the build not fully successful?
         value: ${{ jobs.build.outputs.fail }}
+      solution:
+        description: Solution file name
+        value: ${{ jobs.build.outputs.solution }}
 
 jobs:
   meta:
@@ -56,6 +59,7 @@ jobs:
         shell: bash
     outputs:
       fail: ${{ steps.problems.outputs.fail }}
+      solution: ${{ steps.solution.outputs.solution }}
     env:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
@@ -75,16 +79,59 @@ jobs:
           strict: ${{ inputs.strictPreflight }}
           verbose: true
 
+      - name: Solution
+        id: solution
+        env:
+          solution: ${{ inputs.solution }}
+          preflight_solution: ${{ steps.preflight.outputs.solution }}
+        run: |
+          # Find Solution
+          main() {
+            echo -e "Finding solution, initially set to: \'$solution\'"
+            [[ "$solution" != *".sln" ]] && solution="${solution}.sln"
+            if ! checkSolution "$solution" && ! checkSolution "$preflight_solution" ; then
+              if ! count="$(echo "$solution" | grep ".sln" --count --only-matching)" ; then
+                fail "Problem counting solutions: $count"
+              elif [[ "$count" -ne 1 ]] ; then
+                fail "${count} solutions found!\nIf a single solution file is not in the root directory, specify _one_ with the \`solution\` input.\n$solution"
+              fi
+              if ! solution="$(find . -name '*.sln')" ; then
+                fail "Problem finding solution: $solution"
+              elif ! checkSolution "$solution" ; then
+                fail "Unable to find any solution in...\n$(ls -l)"
+              fi
+            fi
+            echo "Done."
+          }
+
+          function checkSolution() {
+            local file="$1"
+            if [[ -f "$file" ]] ; then
+              echo "Solution found: \`$file\`"
+              echo "solution=$file" >> "$GITHUB_OUTPUT"
+              echo "### Processing $file" >> "$GITHUB_STEP_SUMMARY"
+              return 0
+            fi
+            return 1
+          }
+
+          function fail {
+            echo -e "‼️ Error: $1" >&2 ## Send message to stderr.
+            echo -e "### ❌ Error ❌\n$1" >> "$GITHUB_STEP_SUMMARY"
+            exit "${2-1}" ## Exit code specified by $2, or 1 by default.
+          }    
+          main "$@" ; exit
+
       - name: NuGet Auth
         id: auth
-        if: steps.preflight.outcome == 'success' || steps.preflight.outcome == 'skipped'
+        if: steps.preflight.outcome == 'success' || steps.solution.outcome == 'success'
         uses: StirlingLabs/GithubNugetAuthAction@main
 
       - name: Restore
         id: restore
         if: steps.auth.outcome == 'success'
         env:
-          solution: ${{ inputs.solution }}
+          solution: ${{ steps.solution.outputs.solution }}
         run: |
           dotnet restore "$solution"
 
@@ -95,7 +142,7 @@ jobs:
           echo "Building $solution"
           dotnet build "$solution" --configuration Release --no-restore
         env:
-          solution: ${{ inputs.solution }}
+          solution: ${{ steps.solution.outputs.solution }}
           release: ${{ inputs.release }}
           version: ${{ needs.meta.outputs.numericVersion }}
           runNumber: ${{ github.run_id }}
@@ -106,7 +153,7 @@ jobs:
           steps.build.outcome == 'success' && 
           inputs.test == 'true'
         env:
-          solution: ${{ inputs.solution }}
+          solution: ${{ steps.solution.outputs.solution }}
         run: |
           dotnet test "$solution" --no-build --no-restore --configuration Release --collect:"XPlat Code Coverage" --logger GitHubActions
 
@@ -169,10 +216,10 @@ jobs:
         id: clean
         if: steps.build.outcome == 'success'
         run: |
-          #dotnet clean "$sln" -c Release # this has problems with our setup
+          dotnet clean "$sln" -c Release
           rm -rf ./**/{bin,obj}/**
         env:
-          sln: ${{ steps.preflight.outputs.solution }}
+          sln: ${{ steps.solution.outputs.solution }}
 
       - name: Test NuPkgs
         id: test-nupkg
@@ -183,7 +230,6 @@ jobs:
           inputs.release == 'true'
         env:
           testProject: ${{ needs.meta.outputs.project }}.Tests
-          logger: ${{ steps.preflight.outputs.githubLogger }}
         run: |
           if [ ! -d "$testProject" ]; then
             echo "Tests not found at $testProject"
@@ -192,9 +238,7 @@ jobs:
           fi
           dotnet restore "$testProject" -p:Configuration=Release -p:UseBuiltNuPkg=True
           dotnet build "$testProject" --configuration Release --no-restore -p:UseBuiltNuPkg=True
-          [[ "$logger" == "true" ]] && loggerOptions="--logger GitHubActions" || loggerOptions=""
-          #shellcheck disable=SC2086
-          dotnet test "$testProject" --configuration Release $loggerOptions --no-restore --no-build -p:UseBuiltNuPkg=True
+          dotnet test "$testProject" --configuration Release loggerOptions="--logger GitHubActions" --no-restore --no-build -p:UseBuiltNuPkg=True
 
       - name: Problems?
         id: problems
