@@ -84,7 +84,7 @@ jobs:
         id: restore
         if: steps.auth.outcome == 'success'
         env:
-          solution: ${{ steps.preflight.outputs.solution }}
+          solution: ${{ inputs.solution }}
         run: |
           dotnet restore "$solution"
 
@@ -92,9 +92,10 @@ jobs:
         id: build
         if: steps.restore.outcome == 'success'
         run: |
+          echo "Building $solution"
           dotnet build "$solution" --configuration Release --no-restore
         env:
-          solution: ${{ steps.preflight.outputs.solution }}
+          solution: ${{ inputs.solution }}
           release: ${{ inputs.release }}
           version: ${{ needs.meta.outputs.numericVersion }}
           runNumber: ${{ github.run_id }}
@@ -105,14 +106,9 @@ jobs:
           steps.build.outcome == 'success' && 
           inputs.test == 'true'
         env:
-          solution: ${{ steps.preflight.outputs.solution }}
-          coverlet: ${{ steps.preflight.outputs.msbuildCoverlet }}
-          logger: ${{ steps.preflight.outputs.githubLogger }}
+          solution: ${{ inputs.solution }}
         run: |
-          [[ "$covertlet" == "true" ]] && coverOptions="--collect:\"XPlat Code Coverage\"" || coverOptions=""
-          [[ "$logger" == "true" ]] && loggerOptions="--logger GitHubActions" || loggerOptions=""
-          #shellcheck disable=SC2086
-          dotnet test "$solution" --no-build --no-restore --configuration Release $coverOptions $loggerOptions
+          dotnet test "$solution" --no-build --no-restore --configuration Release --collect:"XPlat Code Coverage" --logger GitHubActions
 
       - name: Upload Library
         id: upload_library

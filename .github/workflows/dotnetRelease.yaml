@@ -11,6 +11,10 @@ on:
         description: Version of this release
         type: string
         required: false
+      library:
+        description: Is this project a library, or an app?
+        type: boolean
+        default: true
       nuget:
         description: Push NuPkg to nuget.org
         type: boolean
@@ -35,12 +39,20 @@ jobs:
           if [ "$releaseName" == "" ] ; then
             releaseName="$repoName $version"
           fi
-          echo "release=$releaseName" >> $GITHUB_OUTPUT
+          echo "release=$releaseName" >> "$GITHUB_OUTPUT"
+          echo "## $releaseName" >> "$GITHUB_SUMMARY"
         env:
           nuPkgName: ${{ inputs.name }}
           repoName: ${{ github.event.repository.name }}
           version: ${{ needs.version.outputs.text }}
           
+      - name: Visibility
+        id: visibility
+        if: github.event.repository.private == true
+        run: |
+          echo "- 🔒 Private repository" >> "$GITHUB_SUMMARY"
+          echo "visibility=private" >> "$GITHUB_OUTPUT"
+
       - uses: actions/download-artifact@v3
         with:
           path: artifacts
@@ -50,22 +62,34 @@ jobs:
 
       - name: Push NuPkg to GitHub
         if: |
+          inputs.library == 'true' &&
+          github.event.repository.private == true ||
           inputs.nuget != true ||
           needs.version.outputs.preRelease == true
         env:
           token: ${{ github.token }}
           url: "https://nuget.pkg.github.com/${{github.repository_owner}}/index.json"
         run: |
-          dotnet nuget push artifacts/**/*.nupkg --api-key $token --source $url --no-symbols --skip-duplicate
-          [ $? -ne 0 ] && echo "dotnet nuget push to GitHub returned errorlevel $?" || echo "Success."
+          if dotnet nuget push artifacts/**/*.nupkg --api-key "$token" --source "$url" --no-symbols --skip-duplicate ; then
+            msg="⬆️ Pushed to **GitHub**."
+          else
+            msg="‼️ dotnet nuget push to **GitHub** returned errorlevel $?"
+          fi
+          echo "- $msg" >> "$GITHUB_SUMMARY"
 
       - name: Push NuPkg to NuGet
         if: |
+          inputs.library == 'true' &&
+          github.event.repository.private == false &&
           inputs.nuget == true &&
           needs.version.outputs.preRelease != true
         env:
           token: ${{ secrets.NUGET_STIRLINGLABS_API_KEY }}
           url: "https://api.nuget.org/v3/index.json"
         run: |
-          dotnet nuget push artifacts/**/*.nupkg --api-key $token --source $url --no-symbols --skip-duplicate
-          [ $? -ne 0 ] && echo "dotnet nuget push to nuget.org returned errorlevel $?" || echo "Success."
+          if dotnet nuget push artifacts/**/*.nupkg --api-key "$token" --source "$url" --no-symbols --skip-duplicate ; then
+            msg="⬆️ Pushed to **NuGet**."
+          else
+            msg="‼️ dotnet nuget push to **NuGet** returned errorlevel $?"
+          fi
+          echo "- $msg" >> "$GITHUB_SUMMARY"
