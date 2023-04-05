@@ -58,7 +58,7 @@ jobs:
       run:
         shell: bash
     outputs:
-      fail: ${{ steps.problems.outputs.fail }}
+      fail: ${{ steps.summary.outputs.failed }}
       solution: ${{ steps.solution.outputs.solution }}
     env:
       DOTNET_NOLOGO: true
@@ -109,7 +109,7 @@ jobs:
             if [[ -f "$file" ]] ; then
               echo "Solution found: \`$file\`"
               echo "solution=$file" >> "$GITHUB_OUTPUT"
-              echo "### Processing $file" >> "$GITHUB_STEP_SUMMARY"
+              echo "### Processing $file on $RUNNER_OS" >> "$GITHUB_STEP_SUMMARY"
               return 0
             fi
             return 1
@@ -133,14 +133,24 @@ jobs:
         env:
           solution: ${{ steps.solution.outputs.solution }}
         run: |
-          dotnet restore "$solution"
+          if dotnet restore "$solution" ; then
+            echo -n "✅ Restored " >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo -n "❌ Failed to restore " >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
 
       - name: Build
         id: build
         if: steps.restore.outcome == 'success'
         run: |
           echo "Building $solution"
-          dotnet build "$solution" --configuration Release --no-restore
+          if dotnet build "$solution" --configuration Release --no-restore ; then
+            echo -n "✅ Built " >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo -n "❌ Failed to build " >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
         env:
           solution: ${{ steps.solution.outputs.solution }}
           release: ${{ inputs.release }}
@@ -149,14 +159,40 @@ jobs:
 
       - name: Test
         id: test
-        if: |
-          steps.build.outcome == 'success' && 
-          inputs.test == 'true'
+        env:
+          buildOutcome: ${{ steps.build.outcome }}
+          solution: ${{ steps.solution.outputs.solution }}
+          test: ${{ inputs.test }}
+        run: |
+          if [[ "$test" == "true" ]] && [[ "$buildOutcome" == "success" ]] ; then
+            echo "Testing $solution"
+            if dotnet test "$solution" --no-build --no-restore --configuration Release --collect:"XPlat Code Coverage" --logger GitHubActions ; then
+              echo "✅ Tested " >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "❌ Failed testing " >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+          else
+            echo "Skipping tests.  buildOutcome: $buildOutcome, test: $test"
+            echo "❌ Skipped testing " >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Test
+        id: test3
+        if: steps.build.outcome == 'success' && inputs.test == 'true'
         env:
           solution: ${{ steps.solution.outputs.solution }}
+          buildOutcome: ${{ steps.build.outcome }}
+          test: ${{ inputs.test }}
         run: |
-          dotnet test "$solution" --no-build --no-restore --configuration Release --collect:"XPlat Code Coverage" --logger GitHubActions
-
+          if dotnet test "$solution" --no-build --no-restore --configuration Release --collect:"XPlat Code Coverage" --logger GitHubActions ; then
+            echo "✅ Tested " >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "❌ Failed testing " >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+  
+  
       - name: Upload Library
         id: upload_library
         if: |
@@ -216,8 +252,12 @@ jobs:
         id: clean
         if: steps.build.outcome == 'success'
         run: |
-          dotnet clean "$sln" -c Release
-          rm -rf ./**/{bin,obj}/**
+          if dotnet clean "$sln" -c Release && rm -rf ./**/{bin,obj}/** ; then
+            echo "✅ Cleaned " >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "❌ Failed to clean " >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
         env:
           sln: ${{ steps.solution.outputs.solution }}
 
@@ -236,48 +276,68 @@ jobs:
             ls ./*.Tests
             exit 1
           fi
-          dotnet restore "$testProject" -p:Configuration=Release -p:UseBuiltNuPkg=True
-          dotnet build "$testProject" --configuration Release --no-restore -p:UseBuiltNuPkg=True
-          dotnet test "$testProject" --configuration Release loggerOptions="--logger GitHubActions" --no-restore --no-build -p:UseBuiltNuPkg=True
-
-      - name: Problems?
-        id: problems
-        if: steps.test.outcome != 'success'
-        env:
-          outcome: ${{ steps.test.outcome }}
-        run: |
-          echo -e "Outcome is \"$outcome\""
-          [[ "$outcome" == "success" ]] && fail="false" || fail="true"
-          echo "fail=$fail" >> "$GITHUB_OUTPUT"
+          if dotnet restore "$testProject" -p:Configuration=Release -p:UseBuiltNuPkg=True ; then
+            echo "✅ Restored $testProject from NuPkg"
+          else
+            echo "❌ Failed to restore $testProject from NuPkg"
+          fi
+          if dotnet build "$testProject" --configuration Release --no-restore -p:UseBuiltNuPkg=True ; then
+            echo "✅ Built $testProject from NuPkg"
+          else
+            echo "❌ Failed to build $testProject from NuPkg"
+          fi
+          if dotnet test "$testProject" --configuration Release loggerOptions="--logger GitHubActions" --no-restore --no-build -p:UseBuiltNuPkg=True ; then
+            echo "✅ Tested $testProject from NuPkg"
+            echo "✅ Tested from NuPkg" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "❌ Failed testing $testProject from NuPkg"
+            echo "❌ Failed to test from NuPkg" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Summary
         id: summary
         env:
+          solutionOutcome: ${{ steps.solution.outcome }}
+          authOutcome: ${{ steps.auth.outcome }}
+          restoreOutcome: ${{ steps.restore.outcome }}
+          buildOutcome: ${{ steps.build.outcome }}
+          cleanOutcome: ${{ steps.clean.outcome }}
           release: ${{ inputs.release }}
           test: ${{ inputs.test }}
-          version: ${{ needs.meta.outputs.textVersion }}
-          project: ${{ needs.meta.outputs.project }}
-          event: ${{ github.event_name }}
-          fail: ${{ steps.problems.outputs.fail }}
-          buildOutcome: ${{ steps.build.outcome }}
           testOutcome: ${{ steps.test.outcome }}
+          library: ${{ inputs.library }}
           nupkgTestOutcome: ${{ steps.test-nupkg.outcome }}
+          uploadLibraryOutcome: ${{ steps.upload_library.outcome }}
+          uploadExecutableOutcome: ${{ steps.upload_executable.outcome }}
+          event: ${{ github.event_name }}
+          coveragePrOutcome: ${{ steps.coverage-pr.outcome }}
+          coverageBranchOutcome: ${{ steps.coverage-branch.outcome }}
         run: |
-          # shellcheck disable=2086,2129
-          [[ "$fail" == "true" ]] && status="encountered problems" || status="successfully completed"
-          echo "### $RUNNER_OS $status" >> "$GITHUB_STEP_SUMMARY"
-          [[ "$release" == "true" ]] && echo "- Built & tested for release" >> "$GITHUB_STEP_SUMMARY"
-          [[ "$buildOutcome" == "success" ]] && buildStatus="sucessfully" || buildStatus="with problems"
-          echo "- Project built $buildStatus" >> "$GITHUB_STEP_SUMMARY"
-          if [[ "$test" == "true" ]] ; then
-            [[ "$testOutcome" == "success" ]] && testStatus="sucessfully" || testStatus="with problems"
-            echo "- Unit tests completed $testStatus" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "- Unit tests were skipped" >> "$GITHUB_STEP_SUMMARY"
+          [[ "$solutionOutcome" == "success" ]] && failed=false || failed="true"
+          [[ "$authOutcome" == "success" ]] || failed="true"
+          [[ "$restoreOutcome" == "success" ]] || failed="true"
+          [[ "$buildOutcome" == "success" ]] || failed="true"
+          [[ "$cleanOutcome" == "success" ]] || failed="true"
+          if [[ "$testOutcome" != "success" ]] ; then
+            echo "‼️ Unit tests failed or were not run. test=$test, release=$release, outcome=$testOutcome"
+            echo "‼️ Unit tests $testOutcome" >> "$GITHUB_STEP_SUMMARY"
+            [[ "$test" == "true" ]] || failed="true"
           fi
-          [[ "$nupkgTestOutcome" == "success" ]] && nupkgTestStatus="sucessfully" || nupkgTestStatus="with problems"
-          [[ "$release" == "true" ]] && echo "- NuPkgs were tested $nupkgTestStatus" >> "$GITHUB_STEP_SUMMARY"
-          storageText="dropped on the floor, I don't know what to do with an $event event"
-          [[ "$event" == "pull_request" ]] && storageText="updated in the PR" 
-          [[ "$event" == "push" ]] && storageText="recorded in the \`storage\` branch"
-          echo "- Test coverage was $storageText" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$nupkgTestOutcome" != "success" ]] ; then
+            echo "‼️ NuPkg tests failed or were not run. test=$test, release=$release, outcome=$nupkgTestOutcome"
+            echo "‼️ NuPkg tests $nupkgTestOutcome" >> "$GITHUB_STEP_SUMMARY"
+            [[ "$test" == "true" ]] && [[ "$release" == "true" ]] || failed="true"
+          fi
+          if [[ "$RUNNER_OS" == "Linux" ]] ; then
+            if [[ "$uploadLibraryOutcome" != "success" ]] && [[ "$uploadExecutableOutcome" != "success" ]]; then
+              echo "‼️ Upload failed or was not run. library=$library, outcome=${uploadLibraryOutcome}/${uploadExecutableOutcome}"
+              echo "‼️ Upload ${uploadLibraryOutcome}/${uploadExecutableOutcome}" >> "$GITHUB_STEP_SUMMARY"
+              failed="true"
+            fi
+            if [[ "$coveragePrOutcome" != "success" ]] && [[ "$coverageBranchOutcome" != "success" ]] ; then
+              echo "‼️ Coverage failed or was not run. event=$event, outcome=${coveragePrOutcome}/${coverageBranchOutcome}"
+              echo "‼️ Coverage ${coveragePrOutcome}/${coverageBranchOutcome}" >> "$GITHUB_STEP_SUMMARY"
+              failed="true"
+            fi
+          fi
+          echo "failed=$failed" >> "$GITHUB_OUTPUT"
