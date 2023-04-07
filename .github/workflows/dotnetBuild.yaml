@@ -163,6 +163,7 @@ jobs:
           buildOutcome: ${{ steps.build.outcome }}
           solution: ${{ steps.solution.outputs.solution }}
           test: ${{ inputs.test }}
+          library: ${{ inputs.library }}
         run: |
           if [[ "$test" == "true" ]] && [[ "$buildOutcome" == "success" ]] ; then
             echo "Testing $solution"
@@ -177,10 +178,35 @@ jobs:
             echo "Skipping tests.  buildOutcome: $buildOutcome, test: $test"
             echo "❌ Skipped testing " >> "$GITHUB_STEP_SUMMARY"
           fi
+        
+      - name: Upload Gate
+        id: gate
+        if: runner.os == 'Linux'
+        env:
+          library: ${{ inputs.library }}
+          continue: ${{ steps.test.outputs.continue }}
+        run: |
+          if [[ "$continue" == "true" ]] ; then
+            [[ "$library" == "true" ]] && upload="lib" || upload="app"
+            echo "upload=$upload" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Setting output, library: $library and os: $RUNNER_OS so upload: ${upload}."
   
+      - name: Debug
+        env:
+          library: ${{ inputs.library }}
+          continue: ${{ steps.test.outputs.continue }}
+          os: ${{ runner.os }}
+          upload: ${{ steps.gate.outputs.upload }}
+        run: |
+          echo "library: $library"
+          echo "continue: $continue"
+          echo "os: $os"
+          echo "upload: $upload"
+          
       - name: Upload Library
         id: upload_library
-        if: inputs.library == 'true' && steps.test.outputs.continue == 'true' && runner.os == 'Linux'
+        if: steps.gate.outputs.upload == 'lib'
         uses: actions/upload-artifact@v3
         with:
           name: ${{ needs.meta.outputs.project }}
@@ -189,7 +215,7 @@ jobs:
 
       - name: Upload Executable
         id: upload_executable
-        if: inputs.library != 'true' && steps.test.outputs.continue == 'true' && runner.os == 'Linux'
+        if: steps.gate.outputs.upload == 'app'
         uses: actions/upload-artifact@v3
         with:
           name: ${{ needs.meta.outputs.project }}
