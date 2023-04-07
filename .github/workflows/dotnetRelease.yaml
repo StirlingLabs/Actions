@@ -19,6 +19,10 @@ on:
         description: Push NuPkg to nuget.org
         type: boolean
         default: false
+    secrets:
+      NUGET_STIRLINGLABS_API_KEY:
+        description: NuGet API key for StirlingLabs
+        required: false
 
 jobs:
   debug:
@@ -102,48 +106,3 @@ jobs:
           fi
           echo "- $msg" >> "$GITHUB_STEP_SUMMARY"
           
-      - name: Push NuPkg to GitHub
-        if: |
-          inputs.library == true &&
-          github.event.repository.private == true ||
-          inputs.nuget != true ||
-          needs.version.outputs.preRelease == 'true'
-        env:
-          token: ${{ github.token }}
-          url: "https://nuget.pkg.github.com/${{github.repository_owner}}/index.json"
-        run: |
-          if dotnet nuget push artifacts/**/*.nupkg --api-key "$token" --source "$url" --no-symbols --skip-duplicate ; then
-            msg="⬆️ Pushed to **GitHub**."
-          else
-            msg="‼️ dotnet nuget push to **GitHub** returned errorlevel $?"
-          fi
-          echo "- $msg" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Push NuPkg to NuGet
-        if: |
-          inputs.library == true &&
-          github.event.repository.private == false &&
-          inputs.nuget == true &&
-          needs.version.outputs.preRelease == 'false'
-        env:
-          token: ${{ secrets.NUGET_STIRLINGLABS_API_KEY }}
-          url: "https://api.nuget.org/v3/index.json"
-        run: |
-          if dotnet nuget push artifacts/**/*.nupkg --api-key "$token" --source "$url" --no-symbols --skip-duplicate ; then
-            msg="⬆️ Pushed to **NuGet**."
-          else
-            msg="‼️ dotnet nuget push to **NuGet** returned errorlevel $?"
-          fi
-          echo "- $msg" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Debugging
-        env:
-          library: ${{ inputs.library }}
-          nuget: ${{ inputs.nuget }}
-          private: ${{ github.event.repository.private }}
-          preRelease: ${{ needs.version.outputs.preRelease }}
-        run: |
-          echo "library: $library"
-          echo "nuget: $nuget"
-          echo "private: $private"
-          echo "preRelease: $preRelease"
