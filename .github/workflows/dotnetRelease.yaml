@@ -75,6 +75,33 @@ jobs:
       - name: NuGet Auth
         uses: StirlingLabs/GithubNugetAuthAction@main
 
+      - name: Push NuPkg
+        if: inputs.library == 'true'
+        env:
+          nuget: ${{ inputs.nuget }}
+          private: ${{ github.event.repository.private }}
+          preRelease: ${{ needs.version.outputs.preRelease }}
+          githubToken: ${{ github.token }}
+          githubUrl: "https://nuget.pkg.github.com/${{github.repository_owner}}/index.json"
+          nugetToken: ${{ secrets.NUGET_STIRLINGLABS_API_KEY }}
+          nugetUrl: "https://api.nuget.org/v3/index.json"
+        run: |
+          if [[ "$nuget" == "true" ]] && [[ "$private" == "false" ]] && [[ "$preRelease" == "false" ]] ; then
+            destination="NuGet"
+            token="$nugetToken"
+            url="$nugetUrl"
+          else
+            destination="GitHub"
+            token="$githubToken"
+            url="$githubUrl"
+          fi
+          if dotnet nuget push artifacts/**/*.nupkg --api-key "$token" --source "$url" --no-symbols --skip-duplicate ; then
+            msg="⬆️ Pushed to **${destination}**."
+          else
+            msg="‼️ Pushing NuPkg to **${destination}** returned errorlevel $?"
+          fi
+          echo "- $msg" >> "$GITHUB_STEP_SUMMARY"
+          
       - name: Push NuPkg to GitHub
         if: |
           inputs.library == 'true' &&
@@ -97,7 +124,7 @@ jobs:
           inputs.library == 'true' &&
           github.event.repository.private == 'false' &&
           inputs.nuget == 'true' &&
-          needs.version.outputs.preRelease != 'true'
+          needs.version.outputs.preRelease == 'false'
         env:
           token: ${{ secrets.NUGET_STIRLINGLABS_API_KEY }}
           url: "https://api.nuget.org/v3/index.json"
