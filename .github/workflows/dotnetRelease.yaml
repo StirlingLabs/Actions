@@ -21,6 +21,21 @@ on:
         default: false
 
 jobs:
+  debug:
+    name: Debug
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Debug
+        env:
+          library: ${{ inputs.library }}
+          nuget: ${{ inputs.nuget }}
+          private: ${{ github.event.repository.private }}
+        run: |
+          echo "library: $library"
+          echo "nuget: $nuget"
+          echo "private: $private"
+          echo "preRelease: $preRelease"
+
   version:
     name: Determine Version
     uses: ./.github/workflows/version.yaml
@@ -48,7 +63,7 @@ jobs:
           
       - name: Visibility
         id: visibility
-        if: github.event.repository.private == true
+        if: github.event.repository.private == 'true'
         run: |
           echo "- 🔒 Private repository" >> "$GITHUB_STEP_SUMMARY"
           echo "visibility=private" >> "$GITHUB_OUTPUT"
@@ -63,9 +78,9 @@ jobs:
       - name: Push NuPkg to GitHub
         if: |
           inputs.library == 'true' &&
-          github.event.repository.private == true ||
-          inputs.nuget != true ||
-          needs.version.outputs.preRelease == true
+          github.event.repository.private == 'true' ||
+          inputs.nuget != 'true' ||
+          needs.version.outputs.preRelease == 'true'
         env:
           token: ${{ github.token }}
           url: "https://nuget.pkg.github.com/${{github.repository_owner}}/index.json"
@@ -80,9 +95,9 @@ jobs:
       - name: Push NuPkg to NuGet
         if: |
           inputs.library == 'true' &&
-          github.event.repository.private == false &&
-          inputs.nuget == true &&
-          needs.version.outputs.preRelease != true
+          github.event.repository.private == 'false' &&
+          inputs.nuget == 'true' &&
+          needs.version.outputs.preRelease != 'true'
         env:
           token: ${{ secrets.NUGET_STIRLINGLABS_API_KEY }}
           url: "https://api.nuget.org/v3/index.json"
@@ -93,3 +108,15 @@ jobs:
             msg="‼️ dotnet nuget push to **NuGet** returned errorlevel $?"
           fi
           echo "- $msg" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Debugging
+        env:
+          library: ${{ inputs.library }}
+          nuget: ${{ inputs.nuget }}
+          private: ${{ github.event.repository.private }}
+          preRelease: ${{ needs.version.outputs.preRelease }}
+        run: |
+          echo "library: $library"
+          echo "nuget: $nuget"
+          echo "private: $private"
+          echo "preRelease: $preRelease"
