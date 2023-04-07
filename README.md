@@ -38,3 +38,4 @@
     - At least `main() {}`
   - End bash scripts with at least `exit` but ideally `main "$@" ; exit`.  This makes it easy to see the end of the script within the Action (amoung other benefits).
 - lowerCamelCase variables in bash but lower_snake_case in `$GITHUB_OUTPUT`.
+- Rry not to use "true" & "false" as string values (it is confusing when compared to input booleans) rather use more meaningful variables and values.  E.g. ❌ `continue=true` ✅ `result=success`
