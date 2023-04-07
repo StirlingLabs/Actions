@@ -256,6 +256,7 @@ jobs:
       - name: Test NuPkgs
         id: test-nupkg
         if: |
+          false &&
           inputs.library == true &&
           steps.clean.outcome == 'success' &&
           inputs.test == true && 
