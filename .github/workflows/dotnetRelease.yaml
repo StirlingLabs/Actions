@@ -63,7 +63,7 @@ jobs:
           
       - name: Visibility
         id: visibility
-        if: github.event.repository.private == 'true'
+        if: github.event.repository.private == true
         run: |
           echo "- 🔒 Private repository" >> "$GITHUB_STEP_SUMMARY"
           echo "visibility=private" >> "$GITHUB_OUTPUT"
@@ -76,7 +76,7 @@ jobs:
         uses: StirlingLabs/GithubNugetAuthAction@main
 
       - name: Push NuPkg
-        if: inputs.library == 'true'
+        if: inputs.library == true
         env:
           nuget: ${{ inputs.nuget }}
           private: ${{ github.event.repository.private }}
@@ -104,9 +104,9 @@ jobs:
           
       - name: Push NuPkg to GitHub
         if: |
-          inputs.library == 'true' &&
-          github.event.repository.private == 'true' ||
-          inputs.nuget != 'true' ||
+          inputs.library == true &&
+          github.event.repository.private == true ||
+          inputs.nuget != true ||
           needs.version.outputs.preRelease == 'true'
         env:
           token: ${{ github.token }}
@@ -121,9 +121,9 @@ jobs:
 
       - name: Push NuPkg to NuGet
         if: |
-          inputs.library == 'true' &&
-          github.event.repository.private == 'false' &&
-          inputs.nuget == 'true' &&
+          inputs.library == true &&
+          github.event.repository.private == false &&
+          inputs.nuget == true &&
           needs.version.outputs.preRelease == 'false'
         env:
           token: ${{ secrets.NUGET_STIRLINGLABS_API_KEY }}

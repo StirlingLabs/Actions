@@ -169,7 +169,7 @@ jobs:
             echo "Testing $solution"
             if dotnet test "$solution" --no-build --no-restore --configuration Release --collect:"XPlat Code Coverage" --logger GitHubActions ; then
               echo "✅ Tested " >> "$GITHUB_STEP_SUMMARY"
-              echo "continue=true" >> "$GITHUB_OUTPUT"
+              echo "result=success" >> "$GITHUB_OUTPUT"
             else
               echo "❌ Failed testing " >> "$GITHUB_STEP_SUMMARY"
               exit 1
@@ -184,25 +184,14 @@ jobs:
         if: runner.os == 'Linux'
         env:
           library: ${{ inputs.library }}
-          continue: ${{ steps.test.outputs.continue }}
+          testResult: ${{ steps.test.outputs.result }}
         run: |
-          if [[ "$continue" == "true" ]] ; then
+          # If running on Linux && Testing succeeded, upload something.
+          if [[ "$testResult" == "success" ]] ; then
             [[ "$library" == "true" ]] && upload="lib" || upload="app"
             echo "upload=$upload" >> "$GITHUB_OUTPUT"
           fi
           echo "Setting output, library: $library and os: $RUNNER_OS so upload: ${upload}."
-  
-      - name: Debug
-        env:
-          library: ${{ inputs.library }}
-          continue: ${{ steps.test.outputs.continue }}
-          os: ${{ runner.os }}
-          upload: ${{ steps.gate.outputs.upload }}
-        run: |
-          echo "library: $library"
-          echo "continue: $continue"
-          echo "os: $os"
-          echo "upload: $upload"
           
       - name: Upload Library
         id: upload_library
@@ -226,7 +215,7 @@ jobs:
         id: coverage-pr
         if: |
           steps.build.outcome == 'success' &&
-          inputs.test == 'true' &&
+          inputs.test == true && 
           github.event_name == 'pull_request' &&
           runner.os == 'Linux'
         uses: StirlingLabs/PROutputAction@v1.0.1
@@ -267,10 +256,10 @@ jobs:
       - name: Test NuPkgs
         id: test-nupkg
         if: |
-          inputs.library == 'true' &&
+          inputs.library == true &&
           steps.clean.outcome == 'success' &&
-          inputs.test == 'true' && 
-          inputs.release == 'true'
+          inputs.test == true && 
+          inputs.release == true
         env:
           testProject: ${{ needs.meta.outputs.project }}.Tests
         run: |
