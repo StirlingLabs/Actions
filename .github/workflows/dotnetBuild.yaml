@@ -176,22 +176,6 @@ jobs:
             echo "Skipping tests.  buildOutcome: $buildOutcome, test: $test"
             echo "❌ Skipped testing " >> "$GITHUB_STEP_SUMMARY"
           fi
-
-      - name: Test
-        id: test3
-        if: steps.build.outcome == 'success' && inputs.test == 'true'
-        env:
-          solution: ${{ steps.solution.outputs.solution }}
-          buildOutcome: ${{ steps.build.outcome }}
-          test: ${{ inputs.test }}
-        run: |
-          if dotnet test "$solution" --no-build --no-restore --configuration Release --collect:"XPlat Code Coverage" --logger GitHubActions ; then
-            echo "✅ Tested " >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "❌ Failed testing " >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
-  
   
       - name: Upload Library
         id: upload_library
