@@ -168,6 +168,7 @@ jobs:
             echo "Testing $solution"
             if dotnet test "$solution" --no-build --no-restore --configuration Release --collect:"XPlat Code Coverage" --logger GitHubActions ; then
               echo "✅ Tested " >> "$GITHUB_STEP_SUMMARY"
+              echo "continue=true" >> "$GITHUB_OUTPUT"
             else
               echo "❌ Failed testing " >> "$GITHUB_STEP_SUMMARY"
               exit 1
@@ -179,28 +180,20 @@ jobs:
   
       - name: Upload Library
         id: upload_library
-        if: |
-          inputs.library == 'true' &&
-          steps.test.outcome == 'success' &&
-          runner.os == 'Linux'
+        if: inputs.library == 'true' && steps.test.outputs.continue == 'true' && runner.os == 'Linux'
         uses: actions/upload-artifact@v3
         with:
           name: ${{ needs.meta.outputs.project }}
-          path: |
-            artifacts/*.nupkg
+          path: artifacts/*.nupkg
           if-no-files-found: error
 
       - name: Upload Executable
         id: upload_executable
-        if: |
-          inputs.library == 'false' &&
-          steps.test.outcome == 'success' &&
-          runner.os == 'Linux'
+        if: inputs.library != 'true' && steps.test.outputs.continue == 'true' && runner.os == 'Linux'
         uses: actions/upload-artifact@v3
         with:
           name: ${{ needs.meta.outputs.project }}
-          path: |
-            artifacts/*
+          path: artifacts/*
           if-no-files-found: error
 
       - name: Save coverage to PR
