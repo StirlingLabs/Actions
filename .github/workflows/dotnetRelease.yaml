@@ -40,7 +40,7 @@ jobs:
             releaseName="$repoName $version"
           fi
           echo "release=$releaseName" >> "$GITHUB_OUTPUT"
-          echo "## $releaseName" >> "$GITHUB_SUMMARY"
+          echo "## $releaseName" >> "$GITHUB_STEP_SUMMARY"
         env:
           nuPkgName: ${{ inputs.name }}
           repoName: ${{ github.event.repository.name }}
@@ -50,7 +50,7 @@ jobs:
         id: visibility
         if: github.event.repository.private == true
         run: |
-          echo "- 🔒 Private repository" >> "$GITHUB_SUMMARY"
+          echo "- 🔒 Private repository" >> "$GITHUB_STEP_SUMMARY"
           echo "visibility=private" >> "$GITHUB_OUTPUT"
 
       - uses: actions/download-artifact@v3
@@ -75,7 +75,7 @@ jobs:
           else
             msg="‼️ dotnet nuget push to **GitHub** returned errorlevel $?"
           fi
-          echo "- $msg" >> "$GITHUB_SUMMARY"
+          echo "- $msg" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Push NuPkg to NuGet
         if: |
@@ -92,4 +92,4 @@ jobs:
           else
             msg="‼️ dotnet nuget push to **NuGet** returned errorlevel $?"
           fi
-          echo "- $msg" >> "$GITHUB_SUMMARY"
+          echo "- $msg" >> "$GITHUB_STEP_SUMMARY"
