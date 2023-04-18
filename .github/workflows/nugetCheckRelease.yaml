@@ -167,14 +167,14 @@ jobs:
           # Gather NuGet release info
           main() {
             declare -ag common=()
-            if [[ "$nupkgName" == *".RID."* ]] && [[ "$rids" != "" ]] ; then
+            if [[ "$nupkgName" == *".RID"* ]] && [[ "$rids" != "" ]] ; then
               # Check if all RIDs have packages for each version
               echo "RID-specific NuGet package $nupkgName -> $rids"
               # Get the list of versions for each RID
               mapfile -t -d ' ' rids <<< "$rids"
               i=0 
               for rid in "${rids[@]}" ; do
-                nupkg="${nupkgName/.RID./".${rid//[$'\t\r\n ']}."}"
+                nupkg="${nupkgName/.RID/".${rid//[$'\t\r\n ']}"}"
                 echo "${i}. Getting list for $nupkg"
                 versionJson="$(getPackageVersionJson "$nupkg")"
                 echo "NuGet has: ${versionJson}"
