@@ -137,10 +137,10 @@ jobs:
             # Skip releases in the ignore list
             version=${release#"$releasePrefix"}
             #echo "- Checking ${release} == ${version}"
-            if [[ "${ignoreReleases}" != *"\"${version}\""* ]] && \
-               [[ "${ignoreReleases}" != *" ${version} "* ]] && \
-               [[ "${ignoreReleases}" != *"\"${release}\""* ]] && \
-               [[ "${ignoreReleases}" != *" ${release} "* ]]
+            if [[ " ${ignoreReleases} " != *"\"${version}\""* ]] && \
+               [[ " ${ignoreReleases} " != *" ${version} "* ]] && \
+               [[ " ${ignoreReleases} " != *"\"${release}\""* ]] && \
+               [[ " ${ignoreReleases} " != *" ${release} "* ]]
             then
               validReleaseList="${validReleaseList}${validReleaseListComma}\"${version}\""
               validReleaseListComma=", "
@@ -324,6 +324,7 @@ jobs:
               echo -n "Potentially need ${release}... "
               ignore="false"
               for element in "${ignoreArray[@]}" ; do        # MUST use "${ignoreArray[@]}"
+                echo -n "${element}, "
                 if [[ "$element" == "$release" ]] ; then
                   echo "no, ignored."
                   ignore="true"
