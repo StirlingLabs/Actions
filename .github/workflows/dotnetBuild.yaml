@@ -27,6 +27,10 @@ on:
         description: Building for release?
         type: boolean
         default: false
+      code_scanning:
+        description: Run code scanning?
+        type: boolean
+        default: true
     outputs:
       fail:
         description: Was the build not fully successful?
@@ -140,6 +144,13 @@ jobs:
             exit 1
           fi
 
+      - name: Init CodeQL
+        if: steps.restore.outcome == 'success' && inputs.code_scanning == true
+        uses: github/codeql-action/init@v2
+        with:
+          languages: csharp
+          queries: +security-and-quality
+
       - name: Build
         id: build
         if: steps.restore.outcome == 'success'
@@ -179,6 +190,13 @@ jobs:
             echo "❌ Skipped testing " >> "$GITHUB_STEP_SUMMARY"
           fi
         
+      - name: CodeQL
+        id: codeql
+        if: steps.test.outcome == 'success' && inputs.code_scanning == true
+        uses: github/codeql-action/analyze@v2
+        with:
+          category: "/language:csharp"
+
       - name: Upload Gate
         id: gate
         if: runner.os == 'Linux'
