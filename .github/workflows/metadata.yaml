@@ -44,7 +44,7 @@ on:
         value: ${{ jobs.version.outputs.triple }}
       preRelease:
         description: Boolean, true if version is pre-release
-        value: ${{ jobs.version.outputs.preRelease }}
+        value: ${{ jobs.meta.outputs.preRelease }}
       currentBranch:
         description: Name of the current branch of the project
         value: ${{ jobs.meta.outputs.currentBranch }}
@@ -122,6 +122,7 @@ jobs:
       tagsUrl: ${{ steps.url.outputs.tagsUrl }}
       releasesUrl: ${{ steps.url.outputs.releasesUrl }}
       short_sha: ${{ steps.api.outputs.short_sha }}
+      preRelease: ${{ steps.status.outputs.preRelease }}
 
     steps:
       - name: Debug
@@ -208,3 +209,31 @@ jobs:
           echo "tagsUrl=${tagsUrl}" >> "$GITHUB_OUTPUT"
           echo "releasesUrl=${releasesUrl}" >> "$GITHUB_OUTPUT"
 
+      - name: Status
+        id: status
+        if: ${{ github.ref_type }} == "tag" && ${{ github.event.action }} == 'published'
+        env:
+          preRelease: ${{ needs.version.outputs.preRelease }} # true or false
+          tag: ${{ github.ref }}
+          url: ${{ steps.api.outputs.url }}
+        run: |
+          # If the tag is a prerelease, set the preRelease flag true, regardless of the value from version
+          tag=${tag##refs/tags/}
+          # Fetch releases from GitHub API
+          releases=$(curl -s "$url/releases")
+          echo -e "Releases:\n$releases"
+          # Extract the 'prerelease' field for the given tag
+          prerelease_answer=$(echo "$releases" | jq --raw-output ".[] | select(.tag_name == \"$tag\") | .prerelease")
+          
+          # Check if the tag was found and if it's a prerelease
+          if [ -z "$prerelease_answer" ]; then
+              echo "Tag $tag not found in releases."
+              preRelease="true"
+              exit 1
+          elif [ "$prerelease_answer" == "true" ]; then
+              echo "Tag $tag is a prerelease."
+              preRelease="true"
+          else
+              echo "Tag $tag is NOT a prerelease."
+          fi
+          echo "preRelease=${preRelease}" >> "$GITHUB_OUTPUT"
