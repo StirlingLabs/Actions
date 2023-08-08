@@ -1,0 +1,8 @@
+{
+    "name": "SL Metadata workflow",
+    "description": "Stirling Labs CI metadata workflow.",
+    "iconName": "example-icon",
+    "categories": [
+        "continuous-integration"
+    ]
+}
