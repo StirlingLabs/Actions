@@ -29,7 +29,9 @@ jobs:
         id: force_ci_check
         if: |
           github.event_name == 'push' &&
-          contains(github.event.head_commit.message, '[force ci]')
+          contains(github.event.head_commit.message, '[force ci]') ||
+          contains(github.event.head_commit.message, '[force-ci]') ||
+          contains(github.event.head_commit.message, '[forceci]')
         run: |
           echo "process=true" >> $GITHUB_OUTPUT
 
