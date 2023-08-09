@@ -22,8 +22,8 @@ on:
     secrets:
       NUGET_STIRLINGLABS_API_KEY:
         description: NuGet API key for StirlingLabs
-        required: false
-
+        required: true
+        
 jobs:
   debug:
     name: Debug

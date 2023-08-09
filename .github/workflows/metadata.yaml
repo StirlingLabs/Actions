@@ -221,14 +221,11 @@ jobs:
           tag=${tag##refs/tags/}
           # Fetch releases from GitHub API
           releases=$(curl -s "$url/releases")
-          echo -e "Releases:\n$releases"
           # Extract the 'prerelease' field for the given tag
-          prerelease_answer=$(echo "$releases" | jq --raw-output ".[] | select(.tag_name == \"$tag\") | .prerelease")
-          
+          prerelease_answer=$(echo "$releases" | jq --raw-output ".[] | select(.tag_name == \"$tag\") | .prerelease")          
           # Check if the tag was found and if it's a prerelease
           if [ -z "$prerelease_answer" ]; then
               echo "Tag $tag not found in releases."
-              preRelease="true"
               exit 1
           elif [ "$prerelease_answer" == "true" ]; then
               echo "Tag $tag is a prerelease."
