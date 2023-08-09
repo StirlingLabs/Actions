@@ -1,0 +1,71 @@
+name: Get Repo Files
+
+on:
+  workflow_call:
+    inputs:
+      files:
+        description: List of files to download, 1 per line
+        type: string
+        required: false
+      filesJson:
+        description: List of files to download and their new names in json format {"oldName":"newName",...}
+        type: string
+        required: false
+
+    outputs:
+      result:
+        description: Result of the workflow
+        value: ${{ jobs.download.outputs.result }}
+
+jobs:
+  download:
+    name: Get
+    runs-on: ubuntu-latest
+    outputs:
+        result: ${{ steps.download.outputs.result }}
+
+    steps:
+      - name: Validate
+        id: validate
+        if: inputs.files == '' && inputs.filesJson == ''
+        run: |
+          echo "No files to download"
+          echo "result=No files to download" >> $GITHUB_OUTPUT
+          exit 1
+      - name: Download
+        id: download
+        env:
+          repo: ${{ github.repository }}
+          files: ${{ inputs.files }}
+          filesJson: ${{ inputs.filesJson }}
+          result: unknown
+        run: |
+          main() {
+            result="unknown"
+            rawUrl="https://raw.githubusercontent.com/${repo}/${GITHUB_REF#refs/heads/}"
+            echo "rawUrl=$rawUrl" >> "$GITHUB_OUTPUT"
+            if [ "$files" != "" ] ; then
+              for file in $files; do
+                download "$file" "${rawUrl}/${file}"
+              done
+            fi
+            if [ "$filesJson" != "" ] ; then
+              echo "$filesJson" | jq -r 'to_entries[] | [.key, .value] | @tsv' | while IFS=$'\t' read -r remote_name local_name; do
+                download "$local_name" "${rawUrl}/${remote_name}"
+              done
+            fi
+            [[ "$result" == "unknown" ]] && result="success"
+            echo "result=$result" >> "$GITHUB_OUTPUT"
+          }
+
+          download() {
+            if wget --output-document "$1" "$2" ; then
+              echo "Received $1"
+            else
+              result="failed"
+            fi
+          }
+
+          main "$@"
+          [[ "$result" == "success" ]] && exit 0 || exit 1
+
